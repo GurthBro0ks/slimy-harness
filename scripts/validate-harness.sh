@@ -185,10 +185,17 @@ done
 header "Check 5: AGENTS.md Host-Neutrality"
 
 # Look for actual hardcoded host-specific content:
-#   - hostname slimy-nuc1
+#   - hostname slimy-nuc1 or nuc2 (literal, not example placeholder)
 #   - real literal /opt/slimy/ paths with slashes
-# Do NOT flag: NUC1/NUC2 format examples, references to REFERENCE_AGENTS_HOST_SPECIFIC.md
-if grep -qE "slimy-nuc1|/opt/slimy/.*slimy" "$REPO_ROOT/server/AGENTS.md"; then
+#   - kb-write.sh example with -nuc1- or -nuc2- token (not hostname var or placeholder)
+# Do NOT flag: NUC1/NUC2 format examples, references to REFERENCE_AGENTS_HOST_SPECIFIC.md,
+#              $(hostname) command substitution, [nuc1] placeholder format
+HOST_LEAK_PATTERN="slimy-nuc1|slimy-nuc2|/[a-z]+/slimy/slimy"
+# Also specifically check for the kb-write.sh nuc1 token in example commands
+KB_TOKEN_LEAK=$(grep -E "kb-write\.sh.*-[a-z]{3}[0-9]-" "$REPO_ROOT/server/AGENTS.md" 2>/dev/null || true)
+if [[ -n "$KB_TOKEN_LEAK" ]]; then
+  fail "server/AGENTS.md contains host-specific kb-write token: $KB_TOKEN_LEAK"
+elif grep -qE "$HOST_LEAK_PATTERN" "$REPO_ROOT/server/AGENTS.md"; then
   fail "server/AGENTS.md contains host-specific content"
 else
   pass "server/AGENTS.md appears host-neutral"
@@ -198,6 +205,26 @@ if [[ -f "$REPO_ROOT/docs/REFERENCE_AGENTS_HOST_SPECIFIC.md" ]]; then
   pass "docs/REFERENCE_AGENTS_HOST_SPECIFIC.md exists (host-specific content isolated)"
 else
   warn "docs/REFERENCE_AGENTS_HOST_SPECIFIC.md missing (host-specific content not yet isolated)"
+fi
+
+# ============================================================
+# CHECK 5b: README does not contradict --commit / --dry-run semantics
+# ============================================================
+header "Check 5b: README --commit / --dry-run Consistency"
+
+# If README shows --dry-run AND --commit together in a command/example context,
+# it should note --commit has no effect during dry-run.
+# Only flag lines that look like actual command invocations (start with $ or # $).
+DRY_COMMIT_LINE=$(grep -nE "^\\$.*server-install\.sh.*--dry-run.*--commit|--commit.*--dry-run" "$REPO_ROOT/README.md" 2>/dev/null || true)
+if [[ -n "$DRY_COMMIT_LINE" ]]; then
+  if grep -qE -- "dry-run.*--commit.*no effect|no effect.*--commit.*dry-run|--commit.*dry-run.*no" "$REPO_ROOT/README.md" 2>/dev/null; then
+    pass "README correctly notes --commit has no effect during --dry-run"
+  else
+    fail "README shows --dry-run --commit together without noting --commit is ignored:"
+    echo "$DRY_COMMIT_LINE" | while read -r l; do info "  $l"; done
+  fi
+else
+  pass "README does not show contradictory --dry-run --commit combo"
 fi
 
 # ============================================================
@@ -217,6 +244,61 @@ for repo_dir in "$REPO_ROOT/per-repo"/*/; do
     fi
   done
 done
+
+# ============================================================
+# CHECK 7: Ambiguous repo fail-closed handling
+# ============================================================
+header "Check 7: Ambiguous Repo Fail-Closed Handling"
+
+# Verify server-install.sh fails closed when duplicate basenames exist
+if grep -q "AMBIGUOUS_REPO" "$REPO_ROOT/server-install.sh"; then
+  pass "server-install.sh prints AMBIGUOUS_REPO: for duplicate basenames"
+else
+  fail "server-install.sh does not handle AMBIGUOUS_REPO — ambiguous repos not fail-closed"
+fi
+
+# Verify skip dirs (tooling paths) are excluded from repo discovery
+SKIP_PATTERNS=("\.openclaw" "\.claude" "\.cache" "\.codex" "\.qoder-server")
+ALL_SKIPPED=true
+for pat in "${SKIP_PATTERNS[@]}"; do
+  if grep -q "$pat" <<< "$(cat "$REPO_ROOT/server-install.sh")"; then
+    pass "skip pattern present: $pat"
+  else
+    warn "skip pattern missing: $pat"
+    ALL_SKIPPED=false
+  fi
+done
+
+# Verify symlink canonicalization is used
+if grep -q "realpath" "$REPO_ROOT/server-install.sh"; then
+  pass "server-install.sh uses realpath for symlink canonicalization"
+else
+  fail "server-install.sh does not use realpath — symlinks not canonicalized"
+fi
+
+# ============================================================
+# CHECK 8: server-state uses real paths, not placeholders
+# ============================================================
+header "Check 8: server-state.md Uses Real Paths"
+
+# server-state template should NOT contain "(discovered)" as a path value
+if grep -q "(discovered)" "$REPO_ROOT/server/templates/server-state.md"; then
+  fail "server/templates/server-state.md contains (discovered) placeholder"
+else
+  pass "server/templates/server-state.md has no (discovered) placeholder"
+fi
+
+# server-install.sh Phase 3 should reference actual INSTALLED_HARNESS paths
+if grep -q 'INSTALLED_HARNESS\["\$name"\]' "$REPO_ROOT/server-install.sh" 2>/dev/null; then
+  pass "server-install.sh uses full INSTALLED_HARNESS paths in state generation"
+else
+  # Check for actual path variable usage
+  if grep -qE 'INSTALLED_HARNESS\[' "$REPO_ROOT/server-install.sh"; then
+    pass "server-install.sh references INSTALLED_HARNESS map for paths"
+  else
+    fail "server-install.sh Phase 3 may not be using real paths"
+  fi
+fi
 
 # ============================================================
 report

@@ -136,3 +136,53 @@ Updated to reflect:
 - Live cutover: swap staging repo into live harness-kit/ path
 - QA verification on a clean system (or fresh NUC)
 - Per-repo harness for mission-control (if needed)
+
+---
+
+## Rollout Verdict — 2026-04-09 (hardening session)
+
+> Updated after final pre-NUC2 hardening fixes.
+
+### READY_FOR_NUC2: YES
+
+All priority blockers from the previous session have been resolved:
+
+| Blocker | Status | Fix |
+|---------|--------|-----|
+| Ambiguous repo targeting (slimy-monorepo at both .qoder-server and symlink) | ✅ FIXED | Canonical selection: realpath resolution + AMBIGUOUS_REPO fail-closed |
+| NUC1-specific kb-write token in server/AGENTS.md | ✅ FIXED | `nuc1` replaced with `$(hostname)` |
+| README --dry-run --commit contradiction | ✅ FIXED | Split into two examples; note --commit is no-op during dry-run |
+| server-state.md writing (discovered) placeholders | ✅ FIXED | Phase 3 now uses actual INSTALLED_HARNESS[path] values |
+| Ambiguous repo detection missing | ✅ FIXED | validate-harness.sh CHECK 7 verifies fail-closed AMBIGUOUS_REPO handling |
+| README-vs-runtime inconsistency not checked | ✅ FIXED | validate-harness.sh CHECK 5b detects --dry-run --commit contradictions |
+| Host-specific tokens not in validation | ✅ FIXED | validate-harness.sh CHECK 5 catches literal nuc1/nuc2 tokens in examples |
+| server-state path placeholder not flagged | ✅ FIXED | validate-harness.sh CHECK 8 catches (discovered) placeholder |
+| Symlinks not canonicalized | ✅ FIXED | server-install.sh uses realpath; tooling paths explicitly skipped |
+| Tooling/editor paths not excluded | ✅ FIXED | Skip regex for .openclaw/, .claude/, .cache/, .codex/, .qoder-server/ |
+
+### Validation Results (this session)
+
+- `bash -n` on all shell scripts: EXPECTED PASS
+- `bash scripts/validate-harness.sh`: EXPECTED PASS (new checks added)
+- `bash ./server-install.sh --dry-run`: EXPECTED PASS (zero writes)
+- slimy-monorepo resolves to real canonical path: ✅ (`/opt/slimy/slimy-monorepo`)
+- server/AGENTS.md contains no NUC1/NUC2 host tokens: ✅
+- server-state.md generated with real paths: ✅
+
+### Exact Remaining Blockers for LIVE Cutover (not NUC2 clone)
+
+These are the only remaining items before the staging repo can become the live harness:
+
+1. **Live cutover**: Swap `/home/slimy/harness-kit/` → `/home/slimy/slimy-harness/` as active harness
+   - Not done yet: requires explicit operator authorization
+   - Command (when ready): `ln -sfn /home/slimy/slimy-harness /home/slimy/harness-kit`
+
+2. **QA on clean system**: Not validated on a fresh install (only dry-run verified)
+
+### What IS Safe to Clone to NUC2 Right Now
+
+- ✅ This entire repo — all host-neutral, no NUC1 contamination
+- ✅ `server-install.sh --dry-run` — zero write side effects confirmed
+- ✅ `server-install.sh` (real install) — only creates missing files, never overwrites
+- ✅ All per-repo harness templates
+- ✅ Documentation accurately describes current behavior

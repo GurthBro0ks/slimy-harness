@@ -150,30 +150,68 @@ for dir in "$KIT/per-repo"/*/; do
   HARNESS_TEMPLATES["$name"]="$dir"
 done
 
-# Discover all git repos under $HOME_DIR
-ALL_REPOS=$(find "$HOME_DIR" -maxdepth 4 -name ".git" -type d 2>/dev/null | sed 's/\/.git$//' | grep -v "node_modules" | sort)
+# ---------------------------------------------------------------------------
+# canonicalize_path PATH
+#   Resolves symlinks and returns the real path. Skips tool/editor dirs.
+#   Returns empty string (and prints AMBIGUOUS_REPO: if duplicate basenames found.
+# ---------------------------------------------------------------------------
+declare -A CANONICAL_PATHS   # basename → canonical path
+declare -A SEEN_BASENAME     # basename → 1 (to detect duplicates)
+declare -A AMBIGUOUS_REPOS   # basename → 1 (if multiple non-skipped candidates)
 
-REPO_COUNT=$(echo "$ALL_REPOS" | wc -l)
-log_info "Found $REPO_COUNT git repos under $HOME_DIR"
+# Skip entire subtrees that are editor/agent/tooling directories
+SKIP_DIRS_REGEX="/\.openclaw/|/\.claude/|/\.cache/|/\.codex/|/\.qoder-server/"
+
+# Discover all git repos under $HOME_DIR
+RAW_REPOS=$(find "$HOME_DIR" -maxdepth 4 -name ".git" -type d 2>/dev/null | sed 's/\/.git$//' | grep -v "node_modules" | sort)
+
+REPO_COUNT=$(echo "$RAW_REPOS" | wc -l)
+log_info "Found $REPO_COUNT raw git repos under $HOME_DIR"
+
+# First pass: canonicalize each path, build basename map
+for repo_path in $RAW_REPOS; do
+  # Skip tool/editor/mirror directories
+  if [[ "$repo_path" =~ $SKIP_DIRS_REGEX ]]; then
+    log_skip "tooling path skipped: $repo_path"
+    continue
+  fi
+
+  # Resolve symlinks to get canonical path
+  real_path=$(realpath "$repo_path" 2>/dev/null || echo "$repo_path")
+  name=$(basename "$real_path")
+
+  if [[ -n "${SEEN_BASENAME[$name]:-}" ]]; then
+    # Duplicate basename found
+    AMBIGUOUS_REPOS["$name"]=1
+    log "${RED}AMBIGUOUS_REPO:${NC} $name (duplicate basename — candidates: ${CANONICAL_PATHS[$name]:-}, $real_path)"
+  else
+    SEEN_BASENAME[$name]=1
+    CANONICAL_PATHS[$name]="$real_path"
+  fi
+done
+
 echo ""
 
+# Second pass: install harness for unambiguous repos with matching templates
 declare -A INSTALLED_HARNESS
-for repo_path in $ALL_REPOS; do
-  name=$(basename "$repo_path")
+for name in "${!CANONICAL_PATHS[@]}"; do
+  if [[ -n "${AMBIGUOUS_REPOS[$name]:-}" ]]; then
+    log "${RED}AMBIGUOUS_REPO:${NC} $name — skipping all candidates (fail-closed)"
+    continue
+  fi
 
-  # Check if we have a harness template for this repo
   template_dir="${HARNESS_TEMPLATES[$name]:-}"
-
   if [[ -z "$template_dir" ]]; then
     log_skip "no harness template for: $name"
     continue
   fi
 
+  repo_path="${CANONICAL_PATHS[$name]}"
   log "${GREEN}  Installing harness for:${NC} $name → $repo_path"
 
   # Per-file install — respect "only if missing" rule for each file
   install_file "$template_dir/AGENTS.md"         "$repo_path/AGENTS.md"
-  install_file "$template_dir/init.sh"          "$repo_path/init.sh"
+  install_file "$template_dir/init.sh"           "$repo_path/init.sh"
   install_file "$template_dir/feature_list.json" "$repo_path/feature_list.json"
   install_file "$template_dir/claude-progress.md" "$repo_path/claude-progress.md"
 
@@ -183,7 +221,7 @@ for repo_path in $ALL_REPOS; do
   # Optionally commit
   try_git_commit "$repo_path" "chore: install agent harness"
 
-  INSTALLED_HARNESS["$name"]=1
+  INSTALLED_HARNESS["$name"]="$repo_path"
 done
 
 echo ""
@@ -194,6 +232,18 @@ log "${GREEN}[Phase 3] server-state.md${NC}"
 STATE_FILE="$HOME_DIR/server-state.md"
 HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
 OS_INFO=$(lsb_release -ds 2>/dev/null || cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || echo "unknown")
+
+# Build repo table rows from actual INSTALLED_HARNESS paths
+REPO_ROWS=""
+for name in "${!INSTALLED_HARNESS[@]}"; do
+  path="${INSTALLED_HARNESS[$name]}"
+  REPO_ROWS="${REPO_ROWS}| $name | ${path} | installed |"$'\n'
+done
+
+# If no harness installed, show a placeholder row
+if [[ -z "$REPO_ROWS" ]]; then
+  REPO_ROWS="| (no repos with harness templates found) | — | — |"$'\n'
+fi
 
 STATE_CONTENT=$(cat << EOF
 # Server State — SlimyAI
@@ -214,8 +264,7 @@ STATE_CONTENT=$(cat << EOF
 
 | Repo | Path | Status |
 |------|------|--------|
-$(for name in "${!INSTALLED_HARNESS[@]}"; do echo "| $name | (discovered) | installed |"; done)
-| (repo) | (path) | unknown |
+${REPO_ROWS}| (repo) | (path) | unknown |
 
 ## Running Services
 

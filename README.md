@@ -19,7 +19,7 @@ harness files remain at `/home/slimy/` and are NOT tracked here.
 
 ```
 slimy-harness/
-├── server-install.sh      # Main installer (repo-based, --dry-run, --commit)
+├── server-install.sh      # Main installer (repo-based, supports --dry-run and --commit)
 ├── install.sh             # Legacy per-repo installer (from harness-kit)
 ├── HARNESS_GUIDE.md       # Human-facing getting-started guide
 ├── PROMPT_TEMPLATES.md    # Prompt library
@@ -73,7 +73,8 @@ bash /home/slimy/slimy-harness/server-install.sh --dry-run
 bash /home/slimy/slimy-harness/server-install.sh
 
 # Optional: also git commit in each target repo after installing
-bash /home/slimy/slimy-harness/server-install.sh --dry-run --commit
+bash /home/slimy/slimy-harness/server-install.sh --commit
+# Note: --commit has NO EFFECT during --dry-run (it is ignored when --dry-run is active)
 ```
 
 ### Flags

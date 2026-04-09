@@ -48,7 +48,7 @@ A shared knowledge base lives at /home/slimy/kb/ (git repo: GurthBro0ks/slimy-kb
 4. Git commit in the project
 5. If server state changed, update `/home/slimy/server-state.md`
 (Optional) If you discovered a reusable pattern, debugging fix, or architecture decision:
-  echo "content" | bash /home/slimy/kb/tools/kb-write.sh raw/agent-learnings/$(date +%Y-%m-%d)-nuc1-[slug].md
+  echo "content" | bash /home/slimy/kb/tools/kb-write.sh raw/agent-learnings/$(date +%Y-%m-%d)-$(hostname)-[slug].md
 
 ---
 
