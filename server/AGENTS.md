@@ -14,17 +14,14 @@ This server hosts multiple projects. This file is your top-level map.
 
 ## Project Map
 
-| Project | Path | Branch | Remote |
-|---------|------|--------|--------|
-| agents | /home/slimy/.claude/agents | main | https://github.com/wshobson/agents.git |
-| clawd | /home/slimy/clawd | main | git@github.com:GurthBro0ks/clawd.git |
-| .mcp_agent_mail_git_mailbox_repo | /home/slimy/.mcp_agent_mail_git_mailbox_repo | master | local-only |
-| mission-control | /home/slimy/mission-control | main | git@github.com:GurthBro0ks/mission-control.git |
-| mailbox_ingest | /home/slimy/nuc-comms/mailbox_ingest | main | /home/slimy/nuc-comms/mailbox.git |
-| git-notes-ledger | /home/slimy/.openclaw/memory/git-notes-ledger | master | local-only |
-| workspace | /home/slimy/.openclaw/workspace | master | local-only |
-| pm_updown_bot_bundle | /home/slimy/pm_updown_bot_bundle | main | git@github.com:GurthBro0ks/pm_updown_bot_bundle.git |
-| slimy-monorepo | /home/slimy/slimy-monorepo | main | git@github.com:GurthBro0ks/slimy-monorepo.git |
+> This section is populated at install time by server-install.sh or by
+> the agent via init.sh dynamic discovery. Do not edit here — edit the
+> live file at /home/slimy/AGENTS.md on each NUC.
+>
+> Expected structure:
+> | Project | Path | Branch | Remote |
+> |---------|------|--------|--------|
+> | (name) | (path) | (branch) | (remote) |
 
 ## Work Rules
 
@@ -53,41 +50,48 @@ A shared knowledge base lives at /home/slimy/kb/ (git repo: GurthBro0ks/slimy-kb
 (Optional) If you discovered a reusable pattern, debugging fix, or architecture decision:
   echo "content" | bash /home/slimy/kb/tools/kb-write.sh raw/agent-learnings/$(date +%Y-%m-%d)-nuc1-[slug].md
 
-## Intentionally Dead (DO NOT RESURRECT)
+---
 
-These services were deliberately killed. If you find them "broken," that is correct.
-Do NOT fix, restart, re-enable, or recreate any of these.
+## Host-Specific Sections (fill in per NUC)
+
+> The sections below contain host-specific operational truths. They are
+> templates here — each NUC fills them in at install time or maintains
+> them manually in the live /home/slimy/AGENTS.md.
+
+### Intentionally Dead (DO NOT RESURRECT)
+
+> List services that were deliberately killed and should not be restarted.
+> Format: | Service | Killed Date | Reason | Replacement |
 
 | Service | Killed Date | Reason | Replacement |
 |---------|------------|--------|-------------|
-| admin-api (port 3080) | 2026-03-19 | Discord OAuth removed | slimy-auth (lib/slimy-auth/) |
-| Discord OAuth | 2026-03-19 | Replaced entirely | Email/password login via slimy-auth |
-| admin.slimyai.xyz | 2026-03-19 | No longer needed | slimyai.xyz serves everything |
-| admin-ui (port 3081) | 2026-03-19 | Was Discord admin panel | Owner panel at /owner/* |
-| /api/* → 3080 rewrite | 2026-03-21 | Stale proxy to dead service | Next.js API routes handle all /api/* |
+| (service) | YYYY-MM-DD | (reason) | (replacement) |
 
-### Auth System (Current — DO NOT CHANGE without explicit instruction)
-- **Stack:** `lib/slimy-auth/` → argon2 + MySQL sessions (Prisma) + httpOnly cookies
-- **Login:** `slimyai.xyz/login` → email/password → `/dashboard`
-- **Owner gate:** `/owner/*` protected via `requireAuth()` in layout
-- **Database:** MySQL via Prisma (`SlimyUser`, `SlimySession`, `SlimyInvite`, `SlimyLoginAttempt`)
-- **Discord:** ZERO integration with login. Discord adapters exist only for code aggregation (Super Snail codes).
+### Auth System
+
+> Document the current auth system stack and login flow.
+
+- **Stack:** (e.g., lib/slimy-auth/ → argon2 + MySQL sessions + httpOnly cookies)
+- **Login:** (e.g., slimyai.xyz/login → email/password → /dashboard)
+- **Owner gate:** (e.g., /owner/* protected via requireAuth())
+- **Database:** (e.g., MySQL via Prisma (SlimyUser, SlimySession, ...))
 
 ### Infrastructure Truth Table
+
+> Per-NUC service inventory. Format: | Service | NUC | Status | Port | Touch? |
+
 | Service | NUC | Status | Port | Touch? |
 |---------|-----|--------|------|--------|
-| MySQL (Docker) | NUC1 | ✅ Running | 3306 | OK — Snail bot needs it |
-| Caddy (TLS) | NUC1 | ✅ Running | 443 | OK — serves slimyai.xyz, chat, etc |
-| slimy-chat (Revolt) | NUC1 | ✅ Running | 8080 | OK — isolated, no auth bridge |
-| agent-loop | NUC1 | ✅ Running | — | OK |
-| admin-api | NUC1 | ❌ DEAD | 3080 | DO NOT START |
-| admin-ui | NUC1 | ❌ DEAD | 3081 | DO NOT START |
-| slimyai-web (Next.js) | NUC2 | ✅ Running | 3000 | OK — slimy-auth login |
-| mission-control | NUC2 | ✅ Running | 3838 | OK |
-| PostgreSQL | NUC2 | ✅ Running | 5432 | OK (legacy, not used by slimy-auth) |
+| (service) | NUC1/NUC2 | running/dead | (port) | OK/DO NOT START |
 
-### Repo Locations (Both NUCs)
-- **Live code:** `/opt/slimy/slimy-monorepo/` (branch: `feature/merge-chat-app`)
-- **Symlink:** `/home/slimy/slimy-monorepo` → `/opt/slimy/slimy-monorepo`
-- **PM2 cwd:** `/opt/slimy/slimy-monorepo/apps/web`
-- **DO NOT** fresh-clone into `/home/slimy/slimy-monorepo/` — it's a symlink, not a directory
+### Repo Locations
+
+> Per-NUC specific repo path notes (e.g., symlinks, non-standard paths).
+
+- (e.g., "Live code: /opt/<org>/<monorepo>/")
+- (e.g., "DO NOT fresh-clone into symlink paths — use actual repo location")
+
+---
+
+*For host-specific reference (NUC1 or NUC2), see docs/REFERENCE_AGENTS_HOST_SPECIFIC.md in this repo.*
+*Do NOT copy host-specific operational details onto other hosts.*

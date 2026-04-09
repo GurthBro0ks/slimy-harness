@@ -1,7 +1,7 @@
 # SlimyAI Harness Source
 
 **Repo:** https://github.com/GurthBro0ks/slimy-harness
-**Status:** STAGING — harness source tracked in git, not yet live installer
+**Status:** STAGING — harness source tracked in git, validated, not yet live
 
 ---
 
@@ -19,16 +19,18 @@ harness files remain at `/home/slimy/` and are NOT tracked here.
 
 ```
 slimy-harness/
-├── server-install.sh      # Main installer (repo-based, supports --dry-run)
+├── server-install.sh      # Main installer (repo-based, --dry-run, --commit)
 ├── install.sh             # Legacy per-repo installer (from harness-kit)
 ├── HARNESS_GUIDE.md       # Human-facing getting-started guide
 ├── PROMPT_TEMPLATES.md    # Prompt library
 ├── auto-prompts.sh        # Shell-executable startup prompts
-├── cheat-sheets/          # Quick reference docs
+├── scripts/
+│   └── validate-harness.sh  # Pre-deployment validation
+├── cheat-sheets/
 │   ├── CHEAT_SHEET_FINAL.md
 │   └── SERVER_CHEAT_SHEET.md
-├── server/                # Server-level harness files
-│   ├── AGENTS.md          # Operating manual template
+├── server/                # Server-level harness files (host-neutral)
+│   ├── AGENTS.md          # Operating manual template (no hardcoded NUC1 paths)
 │   ├── init.sh            # Repo discovery script
 │   ├── QUALITY_CRITERIA.md
 │   ├── auto-prompts.md
@@ -37,13 +39,14 @@ slimy-harness/
 │       ├── feature_list.json
 │       ├── PROJECT_NARRATIVE.md
 │       └── server-state.md
-├── per-repo/             # Per-project harness templates
+├── per-repo/             # Per-project harness (only for repos with templates)
 │   ├── pm_updown_bot_bundle/
 │   └── slimy-monorepo/
 ├── docs/
-│   ├── HARNESS_ARCHITECTURE.md   # Current design + v3 plan
-│   ├── CURRENT_LAYOUT_FINDINGS.md # What existed and where
-│   └── CUTOVER_NOTES.md         # Cutover log (after each run)
+│   ├── HARNESS_ARCHITECTURE.md       # Current design + v3 plan
+│   ├── REFERENCE_AGENTS_HOST_SPECIFIC.md  # NUC1-specific content (DO NOT COPY)
+│   ├── CURRENT_LAYOUT_FINDINGS.md    # What existed and where
+│   └── CUTOVER_NOTES.md             # Cutover log
 └── compat/
     └── harness-kit-server-install-wrapper.sh  # Future cutover helper
 ```
@@ -52,10 +55,10 @@ slimy-harness/
 
 ## Deployment
 
-### Current State (v2 / staging)
+### Current State (staging)
 
 Live harness still lives at `/home/slimy/harness-kit/` on NUC1.
-This repo is the **staging version** — tested via `--dry-run`, not active.
+This repo is the **staging version** — validated via `--dry-run`, not active.
 
 ### How to Deploy (after cutover)
 
@@ -63,25 +66,67 @@ This repo is the **staging version** — tested via `--dry-run`, not active.
 # Clone this repo (if not already)
 git clone https://github.com/GurthBro0ks/slimy-harness.git /home/slimy/slimy-harness
 
-# Preview what would be installed (no writes)
+# Preview what would be installed (zero writes — always safe)
 bash /home/slimy/slimy-harness/server-install.sh --dry-run
 
-# Actually install (only writes to non-existent paths)
+# Actually install (only creates missing files, never overwrites)
 bash /home/slimy/slimy-harness/server-install.sh
+
+# Optional: also git commit in each target repo after installing
+bash /home/slimy/slimy-harness/server-install.sh --dry-run --commit
 ```
+
+### Flags
+
+| Flag | Effect |
+|------|--------|
+| `--dry-run` | Preview only, no writes, no side effects |
+| `--commit` | After installing, git commit in each target repo |
 
 ### What Gets Installed
 
-| File | Installed To | Notes |
-|------|-------------|-------|
+| File | Installed To | Condition |
+|------|-------------|-----------|
 | AGENTS.md, init.sh, QUALITY_CRITERIA.md | `/home/slimy/` | Only if missing |
-| claude-progress.md, feature_list.json, server-state.md | `/home/slimy/` | From **blank templates** — never overwrites live |
+| claude-progress.md, feature_list.json, server-state.md | `/home/slimy/` | Only if missing (from templates) |
 | PROJECT_NARRATIVE.md | `/home/slimy/` | Only if missing |
-| Per-repo AGENTS.md, init.sh | each repo root | Only if missing |
+| Per-repo harness | each repo with matching template | Only if missing |
 
-**Live state files are NEVER overwritten.** If a file already exists at the
-destination, the installer skips it. This is intentional — you keep your
-live operational data.
+**Live state files are NEVER overwritten.** If a file already exists,
+the installer skips it and reports "already exists". This is intentional.
+
+### Validation
+
+```bash
+bash scripts/validate-harness.sh
+```
+
+Checks: shell syntax, dry-run zero-write, docs vs installer consistency,
+required files exist, AGENTS.md host-neutrality.
+
+---
+
+## Host-Neutrality
+
+`server/AGENTS.md` is a **host-neutral template**. It does not contain:
+- Hardcoded hostnames (e.g., slimy-nuc1)
+- Real NUC-specific paths (e.g., /opt/slimy/slimy-monorepo)
+
+NUC-specific operational details are isolated in:
+`docs/REFERENCE_AGENTS_HOST_SPECIFIC.md`
+
+**DO NOT** copy content from that reference file onto other NUCs.
+
+---
+
+## Per-Repo Harness Scope
+
+The installer dynamically discovers all git repos under `$HOME_DIR`, but
+only installs harness for repos that have a matching template under `per-repo/`.
+
+**Supported:** slimy-monorepo, pm_updown_bot_bundle
+**Not yet supported:** mission-control, clawd, kb, ned-clawd, and others
+(adding support: create `per-repo/<name>/` with AGENTS.md and init.sh)
 
 ---
 
@@ -97,53 +142,18 @@ live operational data.
 | server-state.md | ✅ LIVE DATA | ❌ NO — use template |
 | PROJECT_NARRATIVE.md | ❌ (planned) | ✅ (placeholder) |
 
-The live files contain operational data specific to each NUC. They must NOT
-be copied into this repo or overwritten during install.
-
 ---
 
-## Harness v3 Roadmap
+## Harness v3 Status
 
-See [docs/HARNESS_ARCHITECTURE.md](docs/HARNESS_ARCHITECTURE.md) for the full
-plan. Key changes coming:
-
-- [ ] `server-install.sh` deploys from this git repo instead of local harness-kit/
-- [ ] Prompt P / C2 / PROJECT_NARRATIVE startup integration
-- [ ] `--dry-run` mode (done ✅)
-- [ ] Per-repo harness discovery for all slimyai repos (not just 3 hardcoded)
-- [ ] Live cutover via `compat/harness-kit-server-install-wrapper.sh`
-
----
-
-## Relationship to Other Repos
-
-This repo does NOT contain project source code. It only contains the harness
-that agents use to work on projects.
-
-- **slimy-monorepo**: Next.js web app, admin API, admin UI, slimy-auth
-- **pm_updown_bot_bundle**: Polymarket trading bot
-- **mission-control**: Task tracking
-- **clawd**: OpenCLAW integration
-- **kb/**: Knowledge base (wiki + raw docs)
-
-Each of those repos has its own git history and is NOT affected by changes
-to this harness repo.
-
----
-
-## NO LIVE CUTOVER IN THIS SESSION
-
-As of 2026-04-09: this repo has been scaffolded and dry-run validated, but
-the live harness at `/home/slimy/harness-kit/` has NOT been replaced.
-
-Run `bash server-install.sh --dry-run` to see what would happen.
-
-To perform live cutover (requires explicit authorization):
-```bash
-# Backup existing harness
-cp -r /home/slimy/harness-kit /home/slimy/harness-kit.bak
-
-# Swap in the new installer
-cp /home/slimy/slimy-harness/compat/harness-kit-server-install-wrapper.sh \
-   /home/slimy/harness-kit/server-install.sh
-```
+| Feature | Status |
+|---------|--------|
+| Repo-based deployment | ✅ Done |
+| --dry-run zero-write | ✅ Done |
+| --commit flag | ✅ Done |
+| Never-overwrite-live-state | ✅ Done |
+| Dynamic per-repo discovery | ✅ Done |
+| Host-neutral AGENTS.md | ✅ Done |
+| Validation script | ✅ Done |
+| Prompt P / PROJECT_NARRATIVE | ⏳ Planned |
+| mission-control harness template | ⏳ Not yet |

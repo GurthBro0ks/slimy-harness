@@ -1,6 +1,6 @@
 # Harness Architecture — SlimyAI
 
-## Current Design (v2 / v3 planning stage)
+## Current Design (v3 staging)
 
 ### The TOP/BOTTOM Wrapper Pattern
 
@@ -57,17 +57,44 @@ find /home/slimy -maxdepth 4 -name ".git" -type d 2>/dev/null
 This finds all git repos dynamically and exports them as `REPO_<name>` env vars.
 The agent picks which repo to work in based on feature_list.json priority.
 
-### Current feature_list.json Lifecycle
+### server-install.sh Installer Behavior
 
-1. Agent reads `/home/slimy/feature_list.json` at startup
-2. Agent sorts by priority (critical > high > medium > low)
-3. Agent picks first incomplete feature
-4. Agent works on it, runs truth gate
-5. Agent marks passes:true only after verified
-6. End of session: agent updates live feature_list.json
+**Usage:**
+```bash
+bash slimy-harness/server-install.sh [--dry-run] [--commit]
+```
 
-Note: feature_list.json is a **live operational state file**, NOT a template.
-It is NOT tracked in this git repo. Each NUC maintains its own.
+**What it does:**
+1. Discovers all git repos under `$HOME_DIR` dynamically
+2. For each discovered repo that has a matching template under `per-repo/<name>/`, installs harness files — but ONLY for files that don't already exist in the target
+3. Installs server-level harness files (AGENTS.md, init.sh, QUALITY_CRITERIA.md) — but ONLY if missing
+4. Creates live-state templates (claude-progress.md, feature_list.json, server-state.md, PROJECT_NARRATIVE.md) — but ONLY if missing
+5. Creates server-state.md with discovered repo paths — but ONLY if missing
+6. Optionally runs `init.sh` to verify (in non-dry-run mode)
+
+**Key safety properties:**
+- **Never overwrites existing files**: every file installation is skipped if the destination already exists
+- **Zero side effects in dry-run**: no chmod, no cp, no git operations during `--dry-run`
+- **No auto-commit by default**: `--commit` flag required to git commit in target repos
+
+**What it does NOT do:**
+- Does NOT deploy from a local harness-kit/ directory
+- Does NOT hardcode a fixed list of repos
+- Does NOT auto-commit without explicit `--commit`
+- Does NOT copy live operational state files into git
+
+### Per-Repo Harness Scope
+
+The installer dynamically discovers repos but only installs harness for repos
+that have a matching template under `per-repo/` in this git repo.
+
+**Repos with harness templates:**
+- `per-repo/slimy-monorepo/`
+- `per-repo/pm_updown_bot_bundle/`
+
+**Repos without harness templates (installer skips gracefully):**
+- mission-control, clawd, kb, ned-clawd, etc.
+- Add new templates under `per-repo/<name>/` to extend coverage.
 
 ### Prompt Library
 
@@ -82,43 +109,32 @@ It is NOT tracked in this git repo. Each NUC maintains its own.
 - **Eval**: separate QA run verifies passes:true claims before accepting
 - QUALITY_CRITERIA.md defines the eval rubric
 
-### How server-install.sh Currently Deploys
+### Host-Neutrality
 
-1. Copies server-level files from `harness-kit/server/` to `/home/slimy/`
-2. Runs dynamic repo discovery to find repos
-3. Copies per-repo harness files from `harness-kit/<repo>/` to each found repo
-4. Rewrites `server-state.md` with discovered repo paths
-5. Runs `init.sh` to verify
+The `server/AGENTS.md` is a **host-neutral template**. It contains:
+- Universal startup sequence, work rules, end-of-session checklist
+- Placeholder tables for host-specific content (project map, dead services, infrastructure)
 
-**Current limitation**: server-install.sh deploys from `harness-kit/` directory on disk,
-not from a git repo. Changes to harness require manual copy into harness-kit.
+NUC1-specific operational details are isolated in `docs/REFERENCE_AGENTS_HOST_SPECIFIC.md`.
+Do NOT copy host-specific content from that file onto other NUCs.
 
 ---
 
-## Planned Harness v3 Changes
+## Planned / In-Progress
 
-### What Will Change
+### Done (v3 staging)
+- ✅ Repo-based deployment from `GurthBro0ks/slimy-harness` git repo
+- ✅ `--dry-run` mode: zero-write preview
+- ✅ `--commit` flag: explicit opt-in for git auto-commit
+- ✅ Never-overwrite-live-state: all installs skip existing files
+- ✅ Dynamic per-repo discovery: scans `per-repo/` directory for templates
+- ✅ Host-neutral `server/AGENTS.md`: no hardcoded NUC1 paths
+- ✅ Validation script: `scripts/validate-harness.sh`
 
-1. **Repo-based deployment**: server-install.sh will deploy FROM this git repo
-   (`GurthBro0ks/slimy-harness`) instead of from local harness-kit/ directory
-
-2. **Prompt P / C2 / PROJECT_NARRATIVE integration**:
-   - PROJECT_NARRATIVE.md (when it exists) will be prepended at startup
-   - C2-style contextual suggestions will be injected via auto-prompts
-   - This is **planned, not yet implemented**
-
-3. **Per-repo AGENTS.md discoverable**: Agent will find and read per-repo AGENTS.md
-   automatically when `cd`-ing into a project (already happens via CLAUDE.md rules)
-
-4. **Live state files excluded from git**:
-   - feature_list.json, claude-progress.md, server-state.md stay on live system
-   - Only templates are in git; actual values generated at install time
-
-5. **Validation/dry-run mode**: server-install.sh will support `--dry-run` to preview
-   what it would change without modifying live system
+### In Progress
+- Prompt P / C2 / PROJECT_NARRATIVE integration (planned, not yet implemented)
 
 ### What Stays the Same
-
 - TOP/BOTTOM wrapper pattern (auto-prompts → server-level → repo-level)
 - init.sh dynamic discovery mechanism
 - Truth gate per project
