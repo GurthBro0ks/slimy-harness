@@ -1,0 +1,8 @@
+{
+  "_meta": {
+    "scope": "server-wide",
+    "last_updated": "YYYY-MM-DD",
+    "rules": "NEVER remove or edit existing features. Only update 'passes' after independent QA verification. Add new features at the end. Each feature has a 'project' field indicating which repo it belongs to."
+  },
+  "features": []
+}

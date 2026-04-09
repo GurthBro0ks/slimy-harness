@@ -1,0 +1,43 @@
+# Environment and secrets
+.env
+.env.*
+.env.local
+.secrets/
+*.pem
+*.key
+
+# Logs
+*.log
+harness-logs/
+
+# Cache and build
+node_modules/
+__pycache__/
+.pytest_cache/
+dist/
+build/
+.next/
+coverage/
+.turbo/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Docker
+docker-volumes/
+
+# Test results
+test-results/
+playwright-report/

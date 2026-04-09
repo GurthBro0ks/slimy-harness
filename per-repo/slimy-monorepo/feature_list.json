@@ -1,0 +1,106 @@
+{
+  "_meta": {
+    "project": "slimy-monorepo",
+    "last_updated": "2026-03-17",
+    "rules": "NEVER remove or edit existing features. Only update 'passes' after verification. Add new features at the end."
+  },
+  "features": [
+    {
+      "id": "web-001",
+      "category": "web-app",
+      "description": "Web app starts and serves pages on localhost:3000",
+      "steps": [
+        "Run pnpm dev:web",
+        "Navigate to http://localhost:3000",
+        "Verify page loads without errors",
+        "Check browser console for JS errors"
+      ],
+      "passes": false,
+      "priority": "critical"
+    },
+    {
+      "id": "admin-api-001",
+      "category": "admin-api",
+      "description": "Admin API starts and responds to health check on port 3080",
+      "steps": [
+        "Run pnpm dev:admin-api",
+        "curl http://localhost:3080/health or equivalent",
+        "Verify 200 response"
+      ],
+      "passes": false,
+      "priority": "critical"
+    },
+    {
+      "id": "admin-ui-001",
+      "category": "admin-ui",
+      "description": "Admin UI starts and serves dashboard on port 3081",
+      "steps": [
+        "Run pnpm dev:admin-ui",
+        "Navigate to http://localhost:3081",
+        "Verify page loads without errors"
+      ],
+      "passes": false,
+      "priority": "critical"
+    },
+    {
+      "id": "prisma-001",
+      "category": "database",
+      "description": "Prisma client generates successfully and connects to database",
+      "steps": [
+        "Run pnpm prisma:generate",
+        "Verify no errors",
+        "Verify generated client is importable"
+      ],
+      "passes": false,
+      "priority": "critical"
+    },
+    {
+      "id": "ci-001",
+      "category": "ci-cd",
+      "description": "GitHub Actions CI pipeline runs lint and tests on push",
+      "steps": [
+        "Push a commit to a branch",
+        "Verify GitHub Actions workflow triggers",
+        "Verify lint and test steps complete"
+      ],
+      "passes": false,
+      "priority": "high"
+    },
+    {
+      "id": "docker-001",
+      "category": "deployment",
+      "description": "Docker Compose builds and starts all services",
+      "steps": [
+        "Run docker-compose up --build",
+        "Verify all containers start",
+        "Verify services are reachable on expected ports"
+      ],
+      "passes": false,
+      "priority": "high"
+    },
+    {
+      "id": "lint-001",
+      "category": "quality",
+      "description": "pnpm lint passes across entire workspace with zero errors",
+      "steps": [
+        "Run pnpm lint",
+        "Verify exit code 0",
+        "Verify no warnings on critical rules"
+      ],
+      "passes": false,
+      "priority": "high"
+    },
+    {
+      "id": "test-001",
+      "category": "quality",
+      "description": "pnpm test:all passes across entire workspace",
+      "steps": [
+        "Run pnpm test:all",
+        "Verify exit code 0",
+        "Verify no skipped critical tests"
+      ],
+      "passes": false,
+      "priority": "high"
+    }
+  ]
+}
