@@ -277,6 +277,26 @@ else
 fi
 
 # ============================================================
+# CHECK 7b: init.sh and server-install.sh skip policies are in sync
+# ============================================================
+header "Check 7b: init.sh ↔ server-install.sh Skip Policy Sync"
+
+# Extract the actual SKIP_DIRS_REGEX value from each file's source
+# Use sed to grab the first SKIP_DIRS_REGEX assignment line and strip the variable prefix
+INSTALLER_SKIP=$(grep -oE "SKIP_DIRS_REGEX='[^']+'|SKIP_DIRS_REGEX=\"[^\"]+\"" "$REPO_ROOT/server-install.sh" \
+  | head -1 | sed "s/SKIP_DIRS_REGEX=//" | tr -d "'\"")
+INIT_SKIP=$(grep -oE "SKIP_DIRS_REGEX='[^']+'|SKIP_DIRS_REGEX=\"[^\"]+\"" "$REPO_ROOT/server/init.sh" \
+  | head -1 | sed "s/SKIP_DIRS_REGEX=//" | tr -d "'\"")
+
+if [[ "$INSTALLER_SKIP" == "$INIT_SKIP" ]]; then
+  pass "init.sh skip patterns match server-install.sh: $INSTALLER_SKIP"
+else
+  fail "init.sh skip patterns do NOT match server-install.sh"
+  info "  installer: ${INSTALLER_SKIP:-<none>}"
+  info "  init.sh:   ${INIT_SKIP:-<none>}"
+fi
+
+# ============================================================
 # CHECK 8: server-state uses real paths, not placeholders
 # ============================================================
 header "Check 8: server-state.md Uses Real Paths"

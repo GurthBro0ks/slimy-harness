@@ -115,7 +115,7 @@ try_git_commit() {
 echo ""
 log "${GREEN}=== SlimyAI Harness — Server Install ===${NC}"
 [[ "$DRY_RUN" == true ]] && log "${YELLOW}[DRY RUN MODE] No files will be written${NC}"
-[[ "$DRY_RUN" == false && "$DO_COMMIT" == false ]] && log "${YELLOW}[Install mode — no auto-commit. Pass --commit to also commit.${NC}"
+[[ "$DRY_RUN" == false && "$DO_COMMIT" == false ]] && log "${YELLOW}[Install mode — no auto-commit. Pass --commit to also commit.]${NC}"
 [[ "$DRY_RUN" == false && "$DO_COMMIT" == true ]] && log "${GREEN}[Install + commit mode]${NC}"
 echo ""
 

@@ -11,7 +11,21 @@ find /home/slimy -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || tr
 echo "  Done."
 
 echo "[2/5] Discovering repos..."
-REPOS=$(find /home/slimy -maxdepth 4 -name ".git" -type d 2>/dev/null | sed 's/\/.git$//' | grep -v node_modules | grep -v ".OLD" | sort)
+# Skip tool/editor/mirror directories — must match server-install.sh skip list
+SKIP_DIRS_REGEX='/\.openclaw/|/\.claude/|/\.cache/|/\.codex/|/\.qoder-server/'
+REPOS=$(find /home/slimy -maxdepth 4 -name ".git" -type d 2>/dev/null \
+  | sed 's/\/.git$//' \
+  | grep -v "node_modules" \
+  | grep -v ".OLD" \
+  | while read -r repo; do
+      # Skip tooling/editor paths (must match server-install.sh)
+      if [[ "$repo" =~ $SKIP_DIRS_REGEX ]]; then
+        continue
+      fi
+      # Canonicalize path (resolve symlinks, normalize)
+      realpath "$repo" 2>/dev/null || echo "$repo"
+    done \
+  | sort)
 REPO_COUNT=$(echo "$REPOS" | wc -l)
 echo "  Found $REPO_COUNT repos"
 

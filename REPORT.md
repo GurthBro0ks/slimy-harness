@@ -186,3 +186,51 @@ These are the only remaining items before the staging repo can become the live h
 - ✅ `server-install.sh` (real install) — only creates missing files, never overwrites
 - ✅ All per-repo harness templates
 - ✅ Documentation accurately describes current behavior
+
+---
+
+## Runtime Discovery Aligned — 2026-04-09
+
+After NUC2 install reconciliation, runtime repo discovery in `server/init.sh` is now fully aligned with installer repo discovery in `server-install.sh`.
+
+### What Changed
+
+| File | Change |
+|------|--------|
+| `server/init.sh` | Added skip regex for tooling/editor paths (`/.openclaw/`, `/.claude/`, `/.cache/`, `/.codex/`, `/.qoder-server/`). Added `realpath` canonicalization before exporting REPO_* vars. |
+| `server-install.sh` | Fixed missing `]` in install-mode banner. |
+| `scripts/validate-harness.sh` | Added CHECK 7b: extracts SKIP_DIRS_REGEX from both files and asserts they are identical. |
+
+### Discovery Results
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Repos discovered by init.sh | 17 | 13 |
+| Tooling repos filtered | 0 (none) | 4 (`.openclaw/`, `.claude/`, `.codex/`, `.qoder-server/` stashes) |
+| Canonical paths | No | Yes — `realpath` resolves symlinks |
+
+### Validation
+
+- `bash -n` all scripts: ✅ PASS
+- `bash scripts/validate-harness.sh`: **47 passed | 1 warning | 0 failures** ✅
+- The 1 warning: files modified this session are newer than git index (expected, benign)
+- CHECK 7b: init.sh and server-install.sh SKIP_DIRS_REGEX patterns match exactly
+
+### Verified Skipped Paths
+
+```
+/.home/slimy/.openclaw/workspace-executor  ← skipped
+/root/.openclaw/workspace-executor        ← skipped
+/home/slimy/.openclaw/workspace-researcher ← skipped
+/home/slimy/.claude/agents                ← skipped
+/home/slimy/.codex/.tmp/plugins           ← skipped
+/home/slimy/.qoder-server/slimy-monorepo   ← skipped
+```
+
+### Verified Supported Repos Still Found
+
+```
+clawd, kb, mission-control, ned-autonomous, ned-clawd, actionbook,
+mailbox_outbox, slimy-chat, slimy-harness, DynaTech, PrivateStorage,
+Slimefun4, stoat-source
+```
