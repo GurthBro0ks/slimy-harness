@@ -321,4 +321,32 @@ else
 fi
 
 # ============================================================
+# CHECK 9: Sync hygiene — detect divergence from origin/main
+# ============================================================
+header "Check 9: Sync Hygiene vs origin/main"
+
+SYNC_SCRIPT="$REPO_ROOT/scripts/check-sync-state.sh"
+if [[ ! -x "$SYNC_SCRIPT" ]]; then
+  warn "scripts/check-sync-state.sh missing or not executable"
+else
+  # Run with cached fetch (no network by default)
+  SYNC_OUT=$(bash "$SYNC_SCRIPT" 2>&1)
+  SYNC_EXIT=$?
+
+  case "$SYNC_EXIT" in
+    0)
+      pass "sync state OK: $(echo "$SYNC_OUT" | grep -v '^\[' | head -1 | xargs)"
+      ;;
+    1)
+      # Behind or diverged — warn but don't fail the whole validation
+      warn "sync attention needed: $(echo "$SYNC_OUT" | grep -E '^\[|ACTION' | head -2 | xargs)"
+      ;;
+    2)
+      # No origin / not a git repo — skip
+      info "sync check skipped: no origin remote or not a git repo"
+      ;;
+  esac
+fi
+
+# ============================================================
 report

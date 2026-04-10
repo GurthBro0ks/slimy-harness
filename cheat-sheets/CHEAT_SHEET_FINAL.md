@@ -23,6 +23,28 @@ cd $REPO_slimy_monorepo
 cd $REPO_pm_updown_bot_bundle
 ```
 
+### Pre-Push Sync Hygiene (slimy-harness)
+**Always run before pushing from either NUC:**
+```bash
+cd /home/slimy/slimy-harness
+git fetch origin
+git status -sb          # shows: main...origin/main
+git log --oneline --decorate -n 5
+
+# Or use the helper:
+bash scripts/check-sync-state.sh --fetch
+```
+
+**Verdict meanings:**
+| Verdict | Meaning | Action |
+|---------|---------|--------|
+| `[OK]` | in sync | safe to push |
+| `[AHEAD]` | local has unpushed commits | safe if ready |
+| `[BEHIND]` | origin has new commits | pull or reset first |
+| `[DIVERGED]` | split histories | merge/rebase before pushing |
+
+**Why:** slimy-harness is used on two hosts. Pushing from a diverged state can overwrite remote commits and cause artifact loss.
+
 ### Truth Gates
 ```bash
 # Monorepo

@@ -34,7 +34,23 @@ find /home/slimy -maxdepth 4 -name ".git" -type d | while read d; do
   echo "=== $(basename $repo) ==="
   git -C "$repo" status --short 2>/dev/null | head -5
 done
+
+# Harness sync check (before push)
+cd /home/slimy/slimy-harness
+bash scripts/check-sync-state.sh --fetch
 ```
+
+## Harness Sync Hygiene
+Before pushing slimy-harness from either NUC:
+```bash
+cd /home/slimy/slimy-harness
+git fetch origin
+git status -sb              # look for: main...origin/main
+git log --oneline -n 3      # see what changed locally vs origin
+```
+- `[OK]` / `[AHEAD]` → safe to push
+- `[BEHIND]` → pull first
+- `[DIVERGED]` → merge/rebase before pushing — do NOT force-push
 
 ## Service Ports
 - slimyai.xyz / Caddy: 443
