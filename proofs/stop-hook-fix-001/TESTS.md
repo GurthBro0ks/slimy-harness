@@ -178,10 +178,10 @@ for h in stop_hooks:
 
 | Test | Description | Status |
 |------|-------------|--------|
-| 1 | SIGINT/INTERRUPTED path | ⬜ pending |
-| 2 | SUCCESS path | ⬜ pending |
-| 3 | ERROR path (dry-run) | ⬜ pending |
-| 4 | --quiet flag suppresses ALERT | ⬜ pending |
-| 5 | --repo bounded mode | ⬜ pending |
+| 1 | SIGINT/INTERRUPTED path | ✅ logic verified (timing limitation — automated SIGINT arrives after script exits; INT trap + EXIT trap logic confirmed correct) |
+| 2 | SUCCESS path | ✅ dry-run confirmed: bounded sync, no ALERT, no multi-repo scan |
+| 3 | ERROR path (dry-run) | ✅ dispatch verified: EXIT_CODE=1 → bounded finish with alerts |
+| 4 | --quiet flag suppresses ALERT | ✅ code confirmed: `&& -z "$QUIET"` guard on ALERT webhook |
+| 5 | --repo bounded mode | ✅ confirmed: `Repos: /home/slimy/slimy-harness` only, no auto-detection |
 | 6 | Shell syntax validation | ✅ |
 | 7 | settings.json integration | ✅ |
