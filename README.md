@@ -139,9 +139,14 @@ only installs harness for repos that have a matching template under `per-repo/`.
 | init.sh | ✅ YES | ✅ (template) |
 | QUALITY_CRITERIA.md | ✅ YES | ✅ (template) |
 | claude-progress.md | ✅ LIVE DATA | ❌ NO — use template |
-| feature_list.json | ✅ LIVE DATA | ❌ NO — use template |
+| feature_list.json | ✅ LIVE DATA | ✅ (v3 schema template) |
 | server-state.md | ✅ LIVE DATA | ❌ NO — use template |
-| PROJECT_NARRATIVE.md | ❌ (planned) | ✅ (placeholder) |
+| PROJECT_NARRATIVE.md | ✅ LIVE DATA (host-specific narrative) | ✅ (blank template in server/templates/) |
+
+**Note on PROJECT_NARRATIVE.md:**
+- Template: `server/templates/PROJECT_NARRATIVE.md` (blank, in git)
+- Live filled narrative: `/home/slimy/PROJECT_NARRATIVE.md` (host-specific, NOT in git)
+- Installer copies the template to `/home/slimy/PROJECT_NARRATIVE.md` when missing
 
 ---
 
@@ -156,5 +161,10 @@ only installs harness for repos that have a matching template under `per-repo/`.
 | Dynamic per-repo discovery | ✅ Done |
 | Host-neutral AGENTS.md | ✅ Done |
 | Validation script | ✅ Done |
-| Prompt P / PROJECT_NARRATIVE | ⏳ Planned |
+| PROJECT_NARRATIVE workflow | ✅ Done |
+| feature_list.json V3 schema (risk + plan[]) | ✅ Done |
+| Prompt P (plan-first work) | ✅ Done |
+| Prompt C2 (systematic fix/debug) | ✅ Done |
+| Formal verification gate (prove-it) | ✅ Done |
+| Startup/shutdown guidance | ✅ Done |
 | mission-control harness template | ⏳ Not yet |

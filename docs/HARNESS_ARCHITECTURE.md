@@ -130,9 +130,12 @@ Do NOT copy host-specific content from that file onto other NUCs.
 - ✅ Dynamic per-repo discovery: scans `per-repo/` directory for templates
 - ✅ Host-neutral `server/AGENTS.md`: no hardcoded NUC1 paths
 - ✅ Validation script: `scripts/validate-harness.sh`
-
-### In Progress
-- Prompt P / C2 / PROJECT_NARRATIVE integration (planned, not yet implemented)
+- ✅ PROJECT_NARRATIVE workflow: template + live host narrative
+- ✅ feature_list.json v3 schema: risk + plan[] fields
+- ✅ Prompt P (plan-first work mode): risk classification + bounded plan before coding
+- ✅ Prompt C2 (systematic fix/debug mode): phased root-cause debugging, fail-closed
+- ✅ Formal verification gate: prove-it shutdown behavior, evidence required
+- ✅ Startup/shutdown guidance: explicit v3 source files listed
 
 ### What Stays the Same
 - TOP/BOTTOM wrapper pattern (auto-prompts → server-level → repo-level)

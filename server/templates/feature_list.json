@@ -2,7 +2,7 @@
   "_meta": {
     "scope": "server-wide",
     "last_updated": "YYYY-MM-DD",
-    "rules": "NEVER remove or edit existing features. Only update 'passes' after independent QA verification. Add new features at the end. Each feature has a 'project' field indicating which repo it belongs to."
+    "rules": "NEVER remove or edit existing features. Only update 'passes' after independent QA verification. Add new features at the end. Each feature has a 'project' field indicating which repo it belongs to. The 'risk' field is required for v3 features. The 'plan' field is required for v3 features. Existing features without risk/plan are treated as risk:medium, plan:[]."
   },
   "features": []
 }

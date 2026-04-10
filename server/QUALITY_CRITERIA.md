@@ -45,3 +45,75 @@ When grading, you MUST:
 3. Check that previously-passing features still pass (regression)
 4. Write specific findings, not vague praise — cite file:line when possible
 5. If you catch yourself thinking "this is probably fine" — test it anyway
+
+---
+
+## Verification Gate — v3 (Prove-It)
+
+The harness now requires **explicit verification evidence** before a feature
+can be marked as passes:true. This applies to both builder self-check and QA evaluation.
+
+### What Must Be Verified
+
+For every feature marked passes:true, the record must include:
+
+1. **Evidence of what was verified** — specific commands run, tests executed, URLs hit
+2. **Commands/tests/runbook checks used** — exact commands that confirmed the feature works
+3. **Result summary** — what happened when you ran those commands
+4. **What remains unverified** — any part of the feature that was NOT tested
+
+### Verification Evidence Format
+
+When updating feature_list.json with passes:true, include in claude-progress.md:
+
+```
+Feature: [feature id]
+Verified by: [agent name / QA agent]
+Date: YYYY-MM-DD
+
+Evidence:
+- [exact command 1] → [result]
+- [exact command 2] → [result]
+- [manual test / screenshot / curl output] → [result]
+
+What was tested:
+- Happy path: [what worked]
+- Edge cases: [what was tried]
+
+What remains unverified:
+- [anything that was NOT tested and why]
+```
+
+### Verification Levels
+
+| Level | When | What It Requires |
+|-------|------|-----------------|
+| BUILD (builder) | Feature work complete | Truth gate passes, manual smoke test |
+| QA (evaluator) | passes:true claimed | Independent test of happy path + 2 edge cases, regression confirmed |
+
+### Fail-Closed Rules
+
+- **Builder may NOT set passes:true** without running the truth gate and documenting evidence.
+- **QA may NOT accept passes:true** without independently verifying the feature.
+- If verification was incomplete (e.g., "could not test edge case X due to missing credentials"), that MUST be documented as "remains unverified".
+- Never mark passes:true for features that were only visually inspected but not actually tested.
+
+### Builder vs QA Separation
+
+- **Builder**: writes code, runs truth gate, updates feature_list.json with `passes: false` initially, documents verification evidence in claude-progress.md
+- **QA**: independently verifies the feature, confirms or rejects the passes:true claim, updates feature_list.json
+- passes:true is only set by QA after actual verification, not by the builder
+
+---
+
+## Risk Classification (v3)
+
+Risk level affects how much planning and verification is required:
+
+| Risk | Description | Plan Required | Verification |
+|------|-------------|--------------|--------------|
+| low | Small, localized change, well-understood code | Minimal (1-3 steps) | Truth gate + quick smoke test |
+| medium | Moderate scope, some uncertainty | Sprint contract with substeps | Truth gate + edge cases |
+| high | Large refactor, security-sensitive, or critical services | Full sprint contract + rollback plan | Truth gate + regression + manual test + QA review |
+
+Risk is set in feature_list.json at feature creation time and guides how Prompt P is applied.

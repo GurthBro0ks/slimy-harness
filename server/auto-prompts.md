@@ -1,5 +1,5 @@
 # SlimyAI Server Harness — Auto Prompts
-# 
+#
 # All prompts assume you're starting from /home/slimy/
 # The agent reads the master harness, picks a project, and self-steers.
 
@@ -16,7 +16,7 @@ import json
 d = json.load(open('/home/slimy/feature_list.json'))
 incomplete = [f for f in d['features'] if not f['passes']]
 for f in sorted(incomplete, key=lambda x: {'critical':0,'high':1,'medium':2,'low':3}.get(x['priority'],9)):
-    print(f'{f[\"id\"]} [{f[\"project\"]}] [{f[\"priority\"]}] {f[\"description\"]}')
+    print(f'{f[\"id\"]} [{f['project']}] [{f['priority']}] {f[\"description\"]}')
 " 2>/dev/null || cat /home/slimy/feature_list.json
 4. cat /home/slimy/server-state.md
 5. source /home/slimy/init.sh
@@ -134,6 +134,158 @@ MANDATORY SHUTDOWN:
 3. git commit in EACH project you modified
 
 Execute autonomously. Start now.
+
+
+# ============================================================
+# PROMPT P: PLAN-FIRST WORK MODE (v3)
+# Risk-aware planning before any edit. Bounded execution after.
+# ============================================================
+#
+# USE WHEN: Starting a new feature or complex task.
+# DO FIRST: Read all harness context. Classify risk. Write plan. Verify plan.
+# THEN: Execute the plan. Prove each step.
+#
+# PROMPT P WORKFLOW:
+#
+# STEP 0 — Read all harness context (do ALL before writing any code):
+#   1. cat /home/slimy/AGENTS.md
+#   2. cat /home/slimy/claude-progress.md
+#   3. cat /home/slimy/feature_list.json
+#   4. cat /home/slimy/PROJECT_NARRATIVE.md
+#   5. cat /home/slimy/server-state.md
+#   6. source /home/slimy/init.sh
+#
+# STEP 1 — Select the feature:
+#   - Pick highest-priority incomplete feature from feature_list.json
+#   - Note its risk level (low/medium/high from feature_list.json)
+#
+# STEP 2 — Classify risk:
+#   - LOW: Small change, well-understood code, no system-wide impact
+#     → Proceed with bounded plan, verify with truth gate
+#   - MEDIUM: Moderate change, affects multiple modules, some uncertainty
+#     → Write a sprint-contract.md before coding. Verify each substep.
+#   - HIGH: Large refactor, security-sensitive, or affects critical services
+#     → Write sprint-contract.md with rollback plan. Get explicit sign-off.
+#
+# STEP 3 — Write the plan (in a durable artifact):
+#   Create /home/slimy/sprint-contract.md with:
+#   - WHAT: feature id and description
+#   - RISK: low/medium/high and why
+#   - PLAN: numbered list of concrete substeps, each with a verification command
+#   - REGRESSION: what must still work after this change
+#   - ROLLBACK: how to undo if it goes wrong
+#
+# STEP 4 — Verify the plan is sound:
+#   - Does each plan step have a verification command?
+#   - Is the regression list testable?
+#   - Is the rollback actually possible?
+#   - Does the plan match the risk level? (high risk = more substeps, more checkpoints)
+#
+# STEP 5 — Execute the plan:
+#   - Do ONE substep at a time
+#   - After each substep, run the verification command for that step
+#   - If verification fails: STOP. Fix or rollback before continuing.
+#   - Do NOT skip steps even if they seem obvious.
+#
+# STEP 6 — Final verification:
+#   - Run the full truth gate for the project
+#   - Confirm regression list still passes
+#   - Update feature_list.json: set passes=true ONLY if QA verifies
+#
+# STEP 7 — Shutdown:
+#   1. Update /home/slimy/claude-progress.md with what was done
+#   2. Update /home/slimy/feature_list.json (passes=true ONLY after QA)
+#   3. git commit in the project
+#   4. Document what was verified and what remains unverified
+#
+# DO NOT skip to coding. A 5-minute plan saves a 2-hour rollback.
+
+MANDATORY STARTUP:
+1. cat /home/slimy/AGENTS.md
+2. cat /home/slimy/claude-progress.md
+3. cat /home/slimy/feature_list.json
+4. cat /home/slimy/PROJECT_NARRATIVE.md
+5. cat /home/slimy/server-state.md
+6. source /home/slimy/init.sh
+
+Use PROMPT P workflow. Start with Step 0–4 (read, select, classify, write plan).
+Only execute after the plan is written and verified.
+Do not ask questions. Execute autonomously. Start now.
+
+
+# ============================================================
+# PROMPT C2: SYSTEMATIC FIX / DEBUG MODE (v3)
+# Structured root-cause debugging. Fail-closed. Prove the fix.
+# ============================================================
+#
+# USE WHEN: Something is broken and you need to find and fix the root cause.
+# DO NOT: Randomly patch symptoms. Edit files blindly. Skip the prove step.
+#
+# PROMPT C2 WORKFLOW:
+#
+# PHASE 1 — OBSERVE (gather evidence, no changes):
+#   1. Run the truth gate for the affected project. Record exact failure output.
+#   2. Check git log --oneline -10 for recent changes that might have caused it.
+#   3. Check /home/slimy/claude-progress.md for recent work in this project.
+#   4. Note: WHAT fails, HOW it fails, WHEN it started failing.
+#
+# PHASE 2 — HYPOTHESIZE (one root cause, falsifiable):
+#   Form a specific, testable hypothesis:
+#   - BAD: "something is broken" ← too vague
+#   - GOOD: "the /api/users endpoint returns 500 because user查询 fails when email is NULL" ← specific
+#   Write the hypothesis down. Then try to PROVE IT WRONG before accepting it.
+#
+# PHASE 3 — TEST THE HYPOTHESIS:
+#   Design a minimal test that, if it passes, would disprove the hypothesis.
+#   - If hypothesis is "NULL email causes 500", test with a non-NULL email
+#   - Run that test
+#   - If test disproves hypothesis: reject hypothesis, return to Phase 2
+#   - If test confirms hypothesis: proceed to Phase 4
+#
+# PHASE 4 — FIX (smallest diff that addresses root cause):
+#   - Write the minimum fix for the confirmed root cause
+#   - Do NOT make unrelated changes
+#   - Do NOT "while I'm here" cleanup
+#
+# PHASE 5 — PROVE THE FIX:
+#   1. Run the truth gate — it MUST pass
+#   2. Run the same minimal test from Phase 3 — it MUST now pass
+#   3. Manually reproduce the original failure scenario — it MUST work now
+#   4. Check for regressions in related features
+#   If ANY prove step fails: STOP. Revert the fix. Return to Phase 1.
+#
+# PHASE 6 — ESCALATE if repeated failure:
+#   After 3 failed fix attempts (hypothesis rejected by tests each time):
+#   - Suspect architecture issue, not implementation bug
+#   - Write up what you tried, what each test showed, why you think it's architectural
+#   - Save to /home/slimy/claude-progress.md as an "UNRESOLVED" entry
+#   - Do NOT leave the codebase in a broken or partially-fixed state
+#
+# FAIL-CLOSED RULE:
+#   If you cannot find the root cause after thorough investigation:
+#   - Do NOT apply random patches
+#   - Do NOT mark passes:true
+#   - Document what you tried and what remains unknown
+#   - Leave the investigation open for the next agent or human
+#
+# SHUTDOWN (MANDATORY):
+#   1. Update /home/slimy/claude-progress.md with:
+#      - WHAT was broken (exact symptoms)
+#      - ROOT CAUSE (or "UNRESOLVED: no root cause found")
+#      - WHAT WAS FIXED (or "nothing fixed — investigation only")
+#      - WHAT WAS VERIFIED (exact commands run)
+#      - WHAT REMAINS UNVERIFIED
+#   2. Update /home/slimy/feature_list.json ONLY if passes was actually verified
+#   3. git commit the fix in the project
+
+MANDATORY STARTUP:
+1. cat /home/slimy/AGENTS.md
+2. cat /home/slimy/claude-progress.md
+3. source /home/slimy/init.sh
+
+Something is broken. Use PROMPT C2 workflow.
+Do NOT random-patch. Follow Phase 1–6 exactly.
+Do not ask questions. Execute autonomously. Start now.
 
 
 # ============================================================

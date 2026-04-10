@@ -9,9 +9,11 @@
 - **Home:** /home/slimy
 
 ## Key Paths
-- Harness: `/home/slimy/` (AGENTS.md, init.sh, etc.)
+- Harness source (git): `/home/slimy/slimy-harness/`
+- Live harness: `/home/slimy/` (AGENTS.md, init.sh, etc.)
+- Live PROJECT_NARRATIVE: `/home/slimy/PROJECT_NARRATIVE.md` (host-specific, NOT in git)
 - Live monorepo: `/home/slimy/slimy-monorepo` (symlink) → `/opt/slimy/slimy-monorepo`
-- Bot bundle: `/home/slimy/pm_updown_bot_bundle`
+- Bot bundle: `/home/slimy/pm_updown_bot_bundle` → `/opt/slimy/pm_updown_bot_bundle`
 - Mission control: `/home/slimy/mission-control`
 - Knowledge base: `/home/slimy/kb/`
 
@@ -43,12 +45,21 @@ done
 ## Harness Files
 | File | Purpose |
 |------|---------|
-| AGENTS.md | Operating manual |
+| AGENTS.md | Operating manual (v3: 9-step startup) |
 | init.sh | Repo discovery |
-| feature_list.json | What to build |
+| feature_list.json | What to build (v3: risk + plan[] fields) |
 | claude-progress.md | Session history |
 | server-state.md | Live services |
-| QUALITY_CRITERIA.md | QA grading rubric |
+| PROJECT_NARRATIVE.md | Architecture, risk zones, institutional knowledge (v3) |
+| QUALITY_CRITERIA.md | QA grading rubric (v3: verification gate) |
+
+## V3 Prompt Modes
+| Prompt | Use When | Key Rule |
+|--------|----------|----------|
+| AUTO-WORK | Pick feature + go | One feature at a time |
+| PROMPT P | New feature / complex task | Plan first, then code |
+| PROMPT C2 | Something is broken | Root cause first, then fix |
+| FIX MODE | Breakage across projects | Smallest diffs, test each |
 
 ## Do NOT Restart
 | Service | Why |
@@ -56,7 +67,16 @@ done
 | admin-api (3080) | DEAD — Discord OAuth removed |
 | admin-ui (3081) | DEAD — replaced by owner panel |
 | admin.slimyai.xyz | DEAD — no longer needed |
+| mission-control orphan (port 3000) | DEAD — orphaned duplicate, killed 2026-03-23 |
+
+## Critical Services
+| Service | How to Check | How to Restart |
+|---------|--------------|---------------|
+| slimy-bot-v2 | `pm2 list` | `pm2 restart slimy-bot-v2` |
+| MySQL (Docker) | `docker ps` | `docker restart slimy-mysql` |
+| slimy-chat | `docker ps` | `cd /home/slimy/slimy-chat && docker compose up -d` |
+| mission-control (NUC2) | `ssh nuc2-ts sudo systemctl status mission-control` | `ssh nuc2-ts sudo systemctl restart mission-control` |
 
 ---
 
-*This is a placeholder — fill in from live server-state.md*
+*Fill in from live server-state.md and PROJECT_NARRATIVE.md*

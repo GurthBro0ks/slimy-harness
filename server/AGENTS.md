@@ -5,12 +5,15 @@ This server hosts multiple projects. This file is your top-level map.
 
 ## Startup Sequence (EVERY session)
 
-1. `cat /home/slimy/claude-progress.md` — what happened last session
-2. `cat /home/slimy/feature_list.json` — master feature list
-3. `cat /home/slimy/server-state.md` — services, ports, health
-4. Decide which project to work in based on priorities
-5. `cd` into that project and `source init.sh` if it exists
-6. Begin work
+1. `cat /home/slimy/AGENTS.md` — this file (your operating manual)
+2. `cat /home/slimy/claude-progress.md` — what happened last session
+3. `cat /home/slimy/feature_list.json` — master feature list (note risk levels)
+4. `cat /home/slimy/PROJECT_NARRATIVE.md` — system context: architecture, risk zones, institutional knowledge
+5. `cat /home/slimy/server-state.md` — services, ports, health
+6. `source /home/slimy/init.sh` — discover all repos, check tools, check services
+7. Decide which project to work in based on priorities
+8. `cd` into that project and `source init.sh` if it exists
+9. Begin work
 
 ## Project Map
 
@@ -42,11 +45,18 @@ A shared knowledge base lives at /home/slimy/kb/ (git repo: GurthBro0ks/slimy-kb
 
 ## End-of-Session Checklist
 
-1. Project truth gate passes (lint/tests)
-2. `/home/slimy/feature_list.json` updated
-3. `/home/slimy/claude-progress.md` updated
-4. Git commit in the project
-5. If server state changed, update `/home/slimy/server-state.md`
+1. **Truth gate passes**: run the project's lint/tests and confirm all green
+2. **feature_list.json updated**: set passes=true ONLY for features verified by QA (not just builder). If passes=true was claimed, document the verification evidence in claude-progress.md.
+3. **claude-progress.md updated**: prepend a session entry with:
+   - Date, project, what was done
+   - What was verified (exact commands run)
+   - What remains unverified
+   - Any open questions or unresolved issues
+4. **Git commit** in the project repo
+5. If server state changed (services, packages), update `/home/slimy/server-state.md`
+6. **Did templates or docs change?** If yes, those changes live in the harness repo — commit there separately
+7. **QA still required?** If a passes:true claim was made, note that QA verification is still pending before the claim is finalized
+
 (Optional) If you discovered a reusable pattern, debugging fix, or architecture decision:
   echo "content" | bash /home/slimy/kb/tools/kb-write.sh raw/agent-learnings/$(date +%Y-%m-%d)-$(hostname)-[slug].md
 
