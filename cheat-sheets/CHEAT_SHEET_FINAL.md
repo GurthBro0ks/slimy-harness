@@ -158,6 +158,19 @@ ROLLBACK: [how to undo]
 
 ---
 
+## Doc-Sync Hygiene (Phase 1)
+
+Auto-sync (`kb-project-doc-sync.sh` / `slimy-agent-finish.sh`) now enforces:
+
+1. **Explicit allowlist**: only repos in `kb/config/doc-sync-allowlist.txt` are touched. Others are skipped with a log message.
+2. **Dirty-tree skip**: if a repo has non-doc dirty files (anything other than README.md, CHANGELOG.md, VERSION.md), the entire repo is skipped — doc-sync will not bundle work-in-progress into commits.
+3. **Non-pushable skip**: repos with no `origin` remote (local-only) are skipped for commit/push.
+
+**Allowlist file:** `kb/config/doc-sync-allowlist.txt`
+**Override env var:** `DOC_SYNC_ALLOWLIST=/path/to/custom-allowlist.txt`
+
+---
+
 ## Do NOT Restart (Dead Services)
 
 | Service | Port | Why |

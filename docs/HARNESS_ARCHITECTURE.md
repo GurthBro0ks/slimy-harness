@@ -136,6 +136,9 @@ Do NOT copy host-specific content from that file onto other NUCs.
 - ✅ Prompt C2 (systematic fix/debug mode): phased root-cause debugging, fail-closed
 - ✅ Formal verification gate: prove-it shutdown behavior, evidence required
 - ✅ Startup/shutdown guidance: explicit v3 source files listed
+- ✅ Doc-sync allowlist (`kb/config/doc-sync-allowlist.txt`): only listed repos get auto-sync
+- ✅ Dirty-tree skip: repos with non-doc dirty files are skipped by doc-sync
+- ✅ Non-pushable skip: repos with no remote origin are skipped for commit/push
 
 ### What Stays the Same
 - TOP/BOTTOM wrapper pattern (auto-prompts → server-level → repo-level)
