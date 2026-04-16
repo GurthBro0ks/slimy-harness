@@ -143,6 +143,7 @@ Do NOT copy host-specific content from that file onto other NUCs.
 - ✅ Push-or-revert: auto-sync commits are reverted if push fails (no local-only accumulation)
 - ✅ Session-scoped default (Phase 3): no broad repo sweep unless --scan-all is explicit
 - ✅ Broad scan explicit opt-in: --scan-all flag required for multi-repo detection in slimy-agent-finish.sh
+- ✅ Daily dedupe (Phase 4): skips doc-sync if HEAD is already today's auto-sync commit; smart override if new doc changes exist
 
 ### What Stays the Same
 - TOP/BOTTOM wrapper pattern (auto-prompts → server-level → repo-level)

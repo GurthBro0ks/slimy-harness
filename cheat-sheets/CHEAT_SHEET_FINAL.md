@@ -158,7 +158,7 @@ ROLLBACK: [how to undo]
 
 ---
 
-## Doc-Sync Hygiene (Phase 1 + Phase 2 + Phase 3)
+## Doc-Sync Hygiene (Phase 1 + Phase 2 + Phase 3 + Phase 4)
 
 Auto-sync (`kb-project-doc-sync.sh` / `slimy-agent-finish.sh`) enforces:
 
@@ -176,6 +176,10 @@ Auto-sync (`kb-project-doc-sync.sh` / `slimy-agent-finish.sh`) enforces:
 7. **Broad scan is explicit opt-in**: use `--scan-all` flag to enable multi-repo detection. This is never triggered by the stop hook automatically.
 8. **Stop hook wiring**: `~/.claude/settings.json` Stop hook passes `${CLAUDE_PROJECT_DIR:-}` as `--active-repo` to `slimy-session-finish.sh`, which passes it as `--repo` to `slimy-agent-finish.sh`. No active repo = no sync.
 
+**Phase 4 guards:**
+9. **Daily dedupe**: if HEAD commit is already today's auto-sync (`docs: auto-sync project docs from <host> YYYY-MM-DD`), doc-sync skips the repo entirely — no files written, no commit created. Second same-day runs produce zero duplicates.
+10. **Smart dedupe**: if HEAD is today's auto-sync but doc files are dirty (something genuinely changed since the last auto-sync), doc-sync proceeds with a NOTE log. This allows justified second same-day syncs when content actually differs.
+
 **Behavior summary:**
 | Invocation | Repos touched |
 |---|---|
@@ -185,6 +189,8 @@ Auto-sync (`kb-project-doc-sync.sh` / `slimy-agent-finish.sh`) enforces:
 | Stop hook (SUCCESS) | Active repo only |
 | Stop hook (ERROR) | Active repo only |
 | Stop hook (Ctrl+C) | NONE (interrupt path) |
+| Same-day second run (no changes) | NONE (daily dedupe) |
+| Same-day second run (new doc changes) | Re-syncs with NOTE log |
 
 **Allowlist file:** `kb/config/doc-sync-allowlist.txt`
 **Override env var:** `DOC_SYNC_ALLOWLIST=/path/to/custom-allowlist.txt`
