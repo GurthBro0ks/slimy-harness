@@ -141,6 +141,8 @@ Do NOT copy host-specific content from that file onto other NUCs.
 - ✅ Non-pushable skip: repos with no remote origin are skipped for commit/push
 - ✅ Conditional VERSION.md: only rewritten if content differs (avoids spurious mtime/git noise)
 - ✅ Push-or-revert: auto-sync commits are reverted if push fails (no local-only accumulation)
+- ✅ Session-scoped default (Phase 3): no broad repo sweep unless --scan-all is explicit
+- ✅ Broad scan explicit opt-in: --scan-all flag required for multi-repo detection in slimy-agent-finish.sh
 
 ### What Stays the Same
 - TOP/BOTTOM wrapper pattern (auto-prompts → server-level → repo-level)

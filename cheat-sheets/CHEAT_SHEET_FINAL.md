@@ -158,7 +158,7 @@ ROLLBACK: [how to undo]
 
 ---
 
-## Doc-Sync Hygiene (Phase 1 + Phase 2)
+## Doc-Sync Hygiene (Phase 1 + Phase 2 + Phase 3)
 
 Auto-sync (`kb-project-doc-sync.sh` / `slimy-agent-finish.sh`) enforces:
 
@@ -170,6 +170,21 @@ Auto-sync (`kb-project-doc-sync.sh` / `slimy-agent-finish.sh`) enforces:
 **Phase 2 guards:**
 4. **Conditional VERSION.md**: VERSION.md is only rewritten if the would-be content differs from current. Unchanged files are not touched (preserves mtime, avoids spurious git dirt).
 5. **Push-or-revert**: if an auto-sync commit is created but push fails, the commit is immediately reverted (`git reset --soft HEAD~1`). No local-only auto-sync commits accumulate.
+
+**Phase 3 guards:**
+6. **Session-scoped default**: `slimy-agent-finish.sh` will NOT scan `/home/slimy` or `/opt/slimy` for repos unless `--scan-all` is explicitly passed. Default behavior: zero repos touched if no `--repo` is specified.
+7. **Broad scan is explicit opt-in**: use `--scan-all` flag to enable multi-repo detection. This is never triggered by the stop hook automatically.
+8. **Stop hook wiring**: `~/.claude/settings.json` Stop hook passes `${CLAUDE_PROJECT_DIR:-}` as `--active-repo` to `slimy-session-finish.sh`, which passes it as `--repo` to `slimy-agent-finish.sh`. No active repo = no sync.
+
+**Behavior summary:**
+| Invocation | Repos touched |
+|---|---|
+| `slimy-agent-finish.sh --repo /path/to/repo` | Only that repo |
+| `slimy-agent-finish.sh` (no flags) | NONE (session-scoped default) |
+| `slimy-agent-finish.sh --scan-all` | All recently-changed allowlisted repos |
+| Stop hook (SUCCESS) | Active repo only |
+| Stop hook (ERROR) | Active repo only |
+| Stop hook (Ctrl+C) | NONE (interrupt path) |
 
 **Allowlist file:** `kb/config/doc-sync-allowlist.txt`
 **Override env var:** `DOC_SYNC_ALLOWLIST=/path/to/custom-allowlist.txt`
