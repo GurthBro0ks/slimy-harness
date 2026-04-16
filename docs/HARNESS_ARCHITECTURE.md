@@ -139,6 +139,8 @@ Do NOT copy host-specific content from that file onto other NUCs.
 - ✅ Doc-sync allowlist (`kb/config/doc-sync-allowlist.txt`): only listed repos get auto-sync
 - ✅ Dirty-tree skip: repos with non-doc dirty files are skipped by doc-sync
 - ✅ Non-pushable skip: repos with no remote origin are skipped for commit/push
+- ✅ Conditional VERSION.md: only rewritten if content differs (avoids spurious mtime/git noise)
+- ✅ Push-or-revert: auto-sync commits are reverted if push fails (no local-only accumulation)
 
 ### What Stays the Same
 - TOP/BOTTOM wrapper pattern (auto-prompts → server-level → repo-level)
