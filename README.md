@@ -1,7 +1,7 @@
 # SlimyAI Harness Source
 
 **Repo:** https://github.com/GurthBro0ks/slimy-harness
-**Status:** STAGING — harness source tracked in git, validated, not yet live
+**Status:** LIVE on NUC1, pending NUC2
 
 ---
 
@@ -55,10 +55,13 @@ slimy-harness/
 
 ## Deployment
 
-### Current State (staging)
+### Current State (live on NUC1)
 
-Live harness still lives at `/home/slimy/harness-kit/` on NUC1.
-This repo is the **staging version** — validated via `--dry-run`, not active.
+Live harness source is this repo at `/home/slimy/slimy-harness/`.
+Deployed 2026-04-23 via `server-install.sh --commit`. All 7 server-level
+files already existed and were preserved. Per-repo harness already in place.
+
+Old harness source at `/home/slimy/harness-kit/` is now superseded.
 
 ### How to Deploy (after cutover)
 
@@ -167,4 +170,4 @@ only installs harness for repos that have a matching template under `per-repo/`.
 | Prompt C2 (systematic fix/debug) | ✅ Done |
 | Formal verification gate (prove-it) | ✅ Done |
 | Startup/shutdown guidance | ✅ Done |
-| mission-control harness template | ⏳ Not yet |
+| mission-control harness template | ✅ Done |
