@@ -40,7 +40,14 @@ slimy-harness/
 │       ├── PROJECT_NARRATIVE.md
 │       └── server-state.md
 ├── per-repo/             # Per-project harness (only for repos with templates)
+│   ├── clawd/
+│   ├── kb/
+│   ├── mission-control/
+│   ├── ned-autonomous/
+│   ├── ned-clawd/
 │   ├── pm_updown_bot_bundle/
+│   ├── slimy-chat/
+│   ├── slimy-harness/
 │   └── slimy-monorepo/
 ├── docs/
 │   ├── HARNESS_ARCHITECTURE.md       # Current design + v3 plan
@@ -128,9 +135,9 @@ NUC-specific operational details are isolated in:
 The installer dynamically discovers all git repos under `$HOME_DIR`, but
 only installs harness for repos that have a matching template under `per-repo/`.
 
-**Supported:** slimy-monorepo, pm_updown_bot_bundle
-**Not yet supported:** mission-control, clawd, kb, ned-clawd, and others
-(adding support: create `per-repo/<name>/` with AGENTS.md and init.sh)
+**Supported:** clawd, kb, mission-control, ned-autonomous, ned-clawd, pm_updown_bot_bundle, slimy-chat, slimy-harness, slimy-monorepo
+**Not yet supported:** stoat-source, actionbook, mailbox_outbox, DynaTech, PrivateStorage, Slimefun4
+(adding support: create `per-repo/<name>/` with AGENTS.md and init.sh — name must match repo directory basename)
 
 ---
 
