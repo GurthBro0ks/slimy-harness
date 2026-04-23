@@ -330,16 +330,112 @@ with open('$STATE_FILE', 'w') as f:
   exit 0
 fi
 
-if command -v slimy-run &>/dev/null; then
-  log "Running slimy-run auto with generated prompt..."
-  slimy-run auto --feature "$DISPATCH_FEATURE_ID" --project "$DISPATCH_PROJECT" --prompt-type "$DISPATCH_PROMPT_TYPE" 2>/dev/null || {
+DISPATCH_PROMPT_FILE="/tmp/next-task-prompt.txt"
+
+python3 -c "
+import json
+
+SHUTDOWN_ADDON = '''
+## SEQUENCER SHUTDOWN (do this LAST, after all other shutdown steps)
+
+Write /home/slimy/session-report.json with this structure:
+{
+  \"session_id\": \"[current ISO-8601 timestamp]\",
+  \"agent\": \"opencode\",
+  \"nuc\": \"nuc1\",
+  \"project\": \"$DISPATCH_PROJECT\",
+  \"feature_id\": \"$DISPATCH_FEATURE_ID\",
+  \"prompt_type\": \"$DISPATCH_PROMPT_TYPE\",
+  \"status\": \"[completed|partial|failed|blocked]\",
+  \"summary\": \"[1-2 sentences: what you did]\",
+  \"changes\": [\"list\", \"of\", \"files\", \"changed\"],
+  \"tests\": {\"ran\": false, \"passed\": false, \"details\": \"\"},
+  \"blockers\": [],
+  \"recommendation\": {\"next_feature_id\": null, \"reasoning\": \"\", \"risk_notes\": \"\"},
+  \"kb_learnings\": [],
+  \"duration_minutes\": 0,
+  \"timestamp\": \"[current ISO-8601]\"
+}
+
+Validate the JSON before writing:
+python3 -c \"import json; json.load(open('/home/slimy/session-report.json')); print('session-report.json: valid')\"
+'''
+
+prompt = f'''You are an autonomous agent dispatched by the SlimyAI sequencer.
+
+MANDATORY STARTUP (do all before writing any code):
+1. cat /home/slimy/AGENTS.md
+2. cat /home/slimy/claude-progress.md
+3. cat /home/slimy/feature_list.json
+4. cat /home/slimy/server-state.md
+5. source /home/slimy/init.sh
+
+YOUR TASK: Fix feature $DISPATCH_FEATURE_ID in project $DISPATCH_PROJECT.
+Description from feature list: look up this feature ID in feature_list.json.
+Read the feature steps and implement them.
+
+Priority: $DISPATCH_RISK
+Reasoning for selection: $DISPATCH_REASONING
+
+BEFORE CODING: write /home/slimy/sprint-contract.md with 3-7 testable done criteria.
+
+MANDATORY SHUTDOWN:
+1. Update /home/slimy/claude-progress.md
+2. Do NOT set passes:true (leave for QA)
+3. git commit in the project repo
+4. Run truth gate (lint/tests) and verify
+{SHUTDOWN_ADDON}
+
+Do not ask questions. Execute autonomously. Start now.
+'''
+
+with open('$DISPATCH_PROMPT_FILE', 'w') as f:
+    f.write(prompt)
+"
+
+log "Dispatch prompt written to $DISPATCH_PROMPT_FILE"
+
+PROJECT_DIR=$(python3 -c "
+import json
+with open('$FEATURE_LIST') as f:
+    fl = json.load(f)
+for feat in fl.get('features', []):
+    if feat.get('id') == '$DISPATCH_FEATURE_ID':
+        print(feat.get('path', '/home/slimy'))
+        break
+else:
+    print('/home/slimy')
+")
+
+DISPATCH_LOG="/home/slimy/harness-logs/dispatch-${DISPATCH_FEATURE_ID}-$(date +%Y%m%d-%H%M%S).log"
+mkdir -p /home/slimy/harness-logs
+
+if command -v opencode &>/dev/null && command -v tmux &>/dev/null; then
+  SESSION_NAME="seq-$(date +%Y%m%d-%H%M%S)"
+  log "Dispatching via opencode run in tmux session '$SESSION_NAME'..."
+  log "Working dir: $PROJECT_DIR"
+  log "Prompt: $DISPATCH_PROMPT_FILE"
+  log "Log: $DISPATCH_LOG"
+  tmux new-session -d -s "$SESSION_NAME" -c "$PROJECT_DIR" \
+    "opencode run --dir '$PROJECT_DIR' --dangerously-skip-permissions \"\$(cat $DISPATCH_PROMPT_FILE)\" 2>&1 | tee '$DISPATCH_LOG'; echo 'DISPATCH_FINISHED exit=\$?' >> '$DISPATCH_LOG'"
+  log "Dispatched to tmux session: $SESSION_NAME (PID: \$(tmux list-panes -t '$SESSION_NAME' -F '#{pane_pid}' 2>/dev/null || echo 'unknown'))"
+  log "Monitor: tmux attach -t $SESSION_NAME"
+  log "Logs: tail -f $DISPATCH_LOG"
+elif command -v opencode &>/dev/null; then
+  log "Dispatching via opencode run (foreground) in $PROJECT_DIR..."
+  opencode run --dir "$PROJECT_DIR" --dangerously-skip-permissions "$(cat "$DISPATCH_PROMPT_FILE")" 2>&1 | tee "$DISPATCH_LOG" || {
+    err "opencode dispatch failed for $DISPATCH_FEATURE_ID"
+  }
+elif command -v slimy-run &>/dev/null; then
+  log "opencode not found. Falling back to slimy-run auto..."
+  slimy-run auto 2>/dev/null || {
     err "slimy-run dispatch failed for $DISPATCH_FEATURE_ID"
   }
 else
-  log "slimy-run not found. Manual dispatch required."
+  log "Neither opencode nor slimy-run found. Manual dispatch required."
   log "  Feature: $DISPATCH_FEATURE_ID"
   log "  Project: $DISPATCH_PROJECT"
-  log "  Prompt type: $DISPATCH_PROMPT_TYPE"
+  log "  Prompt: $DISPATCH_PROMPT_FILE"
   log "  KB context: $DISPATCH_KB_CONTEXT"
 fi
 
