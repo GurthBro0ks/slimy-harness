@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SlimyAI Session Report",
+  "description": "Schema for agent session reports written at shutdown by the self-sequencing layer.",
+  "type": "object",
+  "required": [
+    "session_id",
+    "agent",
+    "nuc",
+    "project",
+    "feature_id",
+    "prompt_type",
+    "status",
+    "summary",
+    "changes",
+    "tests",
+    "blockers",
+    "recommendation",
+    "kb_learnings",
+    "duration_minutes",
+    "timestamp"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "ISO-8601 timestamp used as unique session identifier.",
+      "format": "date-time"
+    },
+    "agent": {
+      "type": "string",
+      "enum": ["claude-code", "opencode", "minimax"],
+      "description": "Which agent type produced this session."
+    },
+    "nuc": {
+      "type": "string",
+      "enum": ["nuc1", "nuc2"],
+      "description": "Which NUC this session ran on."
+    },
+    "project": {
+      "type": "string",
+      "description": "Repo name the agent worked on."
+    },
+    "feature_id": {
+      "type": ["string", "null"],
+      "description": "Feature ID from feature_list.json, or null if ad-hoc work."
+    },
+    "prompt_type": {
+      "type": "string",
+      "enum": ["A", "B", "C", "C2", "D", "E", "F", "G", "H", "I", "P"],
+      "description": "Which prompt type was used for this session."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "partial", "failed", "blocked"],
+      "description": "Final status of the session."
+    },
+    "summary": {
+      "type": "string",
+      "description": "1-2 sentence summary of what was done."
+    },
+    "changes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of files changed during the session."
+    },
+    "tests": {
+      "type": "object",
+      "required": ["ran", "passed"],
+      "properties": {
+        "ran": {
+          "type": "boolean",
+          "description": "Whether tests were run."
+        },
+        "passed": {
+          "type": "boolean",
+          "description": "Whether all tests passed."
+        },
+        "details": {
+          "type": "string",
+          "description": "Truth gate output summary."
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "description"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["manual", "dependency", "bug", "question"],
+            "description": "Category of blocker."
+          },
+          "description": {
+            "type": "string",
+            "description": "What is blocking progress."
+          },
+          "blocks_feature": {
+            "type": ["string", "null"],
+            "description": "Feature ID this blocks, or null."
+          }
+        }
+      },
+      "description": "Active blockers encountered during the session."
+    },
+    "recommendation": {
+      "type": "object",
+      "required": ["next_feature_id", "reasoning"],
+      "properties": {
+        "next_feature_id": {
+          "type": ["string", "null"],
+          "description": "Suggested next feature ID, or null."
+        },
+        "reasoning": {
+          "type": "string",
+          "description": "Why this feature should be next."
+        },
+        "risk_notes": {
+          "type": "string",
+          "description": "Any caution for the next session."
+        }
+      }
+    },
+    "kb_learnings": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "New knowledge worth capturing for the KB."
+    },
+    "duration_minutes": {
+      "type": "number",
+      "description": "Approximate session duration in minutes."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when session ended."
+    }
+  }
+}

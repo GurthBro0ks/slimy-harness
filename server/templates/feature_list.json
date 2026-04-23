@@ -2,7 +2,25 @@
   "_meta": {
     "scope": "server-wide",
     "last_updated": "YYYY-MM-DD",
-    "rules": "NEVER remove or edit existing features. Only update 'passes' after independent QA verification. Add new features at the end. Each feature has a 'project' field indicating which repo it belongs to. The 'risk' field is required for v3 features. The 'plan' field is required for v3 features. Existing features without risk/plan are treated as risk:medium, plan:[]."
+    "rules": "NEVER remove or edit existing features. Only update 'passes' after independent QA verification. Add new features at the end. Each feature has a 'project' field indicating which repo it belongs to. The 'risk' field is required for v3 features. The 'plan' field is required for v3 features. Existing features without risk/plan are treated as risk:medium, plan:[]. v4 adds: blocked_by (array of feature IDs or 'manual:description'), last_attempted (ISO-8601), attempt_count (integer), status (open|in-progress|blocked|completed|abandoned). Existing features without these fields are treated as: blocked_by=[], last_attempted=null, attempt_count=0, status=open."
   },
-  "features": []
+  "features": [
+    {
+      "id": "example-feature-001",
+      "project": "example-repo",
+      "category": "feature",
+      "description": "Example feature showing all v4 fields.",
+      "steps": [],
+      "passes": false,
+      "priority": "medium",
+      "risk": "medium",
+      "plan": [],
+      "blocked_by": [],
+      "last_attempted": null,
+      "attempt_count": 0,
+      "status": "open",
+      "path": "/home/slimy/example-repo",
+      "remote": "git@github.com:example/example.git"
+    }
+  ]
 }
