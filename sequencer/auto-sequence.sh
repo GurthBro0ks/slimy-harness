@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+DRY_RUN="${DRY_RUN:-0}"
 MAX_SESSIONS="${MAX_SESSIONS:-5}"
 SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
 SESSION_REPORT="/home/slimy/session-report.json"
@@ -134,23 +135,74 @@ print(json.dumps('''$KB_RESULT'''))
 fi
 
 PROMPT=$(python3 -c "
-import json
-with open('$SEQUNCER_DIR/qwen-dispatch-prompt.md') as f:
-    template = f.read()
-template = template.replace('{SESSION_REPORT}', json.loads('$SESSION_REPORT_JSON') if '$SESSION_REPORT_JSON' != '{}' else {})
-template = template.replace('{SESSION_REPORT}', json.dumps(json.loads('$SESSION_REPORT_JSON'), indent=2) if '$SESSION_REPORT_JSON' != '{}' else '{}')
-template = template.replace('{AVAILABLE_FEATURES}', json.dumps(json.loads('$AVAILABLE_FEATURES'), indent=2))
-template = template.replace('{NARRATIVE_SUMMARY}', json.loads($NARRATIVE_SUMMARY) if $NARRATIVE_SUMMARY else '')
-template = template.replace('{KB_CONTEXT}', json.loads($KB_CONTEXT) if $KB_CONTEXT else '')
-print(template)
+import json, sys
+
+session_report_json = '$SESSION_REPORT_JSON'
+available_features_json = '$AVAILABLE_FEATURES'
+
+try:
+    report = json.loads(session_report_json) if session_report_json != '{}' else {}
+except:
+    report = {}
+try:
+    features = json.loads(available_features_json)
+except:
+    features = []
+
+prio_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
+features.sort(key=lambda x: (prio_order.get(x.get('priority','medium'), 9), x.get('attempt_count', 0)))
+candidates = features[:10]
+
+last_project = report.get('project', 'unknown')
+last_status = report.get('status', 'unknown')
+
+prompt = f\"\"\"You are a task dispatcher. Pick the best next task from this list. Output ONLY valid JSON.
+
+Last session: project={last_project}, status={last_status}
+
+Available tasks (sorted by priority):
+{json.dumps(candidates, indent=2)}
+
+Rules: Pick highest priority. Prefer same project as last session for context reuse. Do not retry failed features immediately.
+
+Output this exact JSON format (respond with ONLY the JSON, nothing else):
+{{\"next_feature_id\": \"id-here\", \"project\": \"project-name\", \"prompt_type\": \"A\", \"reasoning\": \"brief reason\", \"risk\": \"medium\", \"kb_context_for_agent\": \"\"}}
+\"\"\"
+
+print(prompt)
 ")
 
-log "Calling Qwen3:4b on NUC2..."
-QWEN_RESPONSE=$(curl -s --max-time 120 "$QWEN_URL" \
-  -d "$(python3 -c "
-import json
-print(json.dumps({'model': '$QWEN_MODEL', 'prompt': '''$PROMPT''', 'stream': False}))
-")" | python3 -c "import json,sys; r=json.load(sys.stdin); print(r.get('response',''))" 2>/dev/null || echo "")
+log "Calling $QWEN_MODEL on localhost..."
+PROMPT_FILE="/tmp/qwen-dispatch-prompt.txt"
+echo "$PROMPT" > "$PROMPT_FILE"
+
+QWEN_RESPONSE=$(python3 -c "
+import json, urllib.request, sys
+
+with open('$PROMPT_FILE') as f:
+    prompt = f.read()
+
+payload = json.dumps({
+    'model': '$QWEN_MODEL',
+    'prompt': prompt,
+    'stream': False,
+    'options': {'temperature': 0.0, 'num_predict': 500}
+}).encode()
+
+req = urllib.request.Request(
+    '$QWEN_URL',
+    data=payload,
+    headers={'Content-Type': 'application/json'}
+)
+
+try:
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        result = json.load(resp)
+        print(result.get('response', ''))
+except Exception as e:
+    print(f'ERROR: {e}', file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null || echo "")
 
 if [ -z "$QWEN_RESPONSE" ]; then
   err "Qwen returned empty response."
@@ -258,6 +310,25 @@ with open('$PENDING_APPROVAL', 'w') as f:
 fi
 
 log "Dispatching: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT [risk=$DISPATCH_RISK]"
+
+if [ "$DRY_RUN" = "1" ]; then
+  log "DRY RUN: would dispatch feature=$DISPATCH_FEATURE_ID project=$DISPATCH_PROJECT prompt_type=$DISPATCH_PROMPT_TYPE risk=$DISPATCH_RISK"
+  log "DRY RUN: reasoning=$DISPATCH_REASONING"
+  NEW_SESSIONS=$((STATE_SESSIONS + 1))
+  python3 -c "
+import json, datetime
+state = {
+    'date': '$TODAY',
+    'sessions_today': $NEW_SESSIONS,
+    'last_dispatch': datetime.datetime.now().isoformat(),
+    'last_feature': '$DISPATCH_FEATURE_ID'
+}
+with open('$STATE_FILE', 'w') as f:
+    json.dump(state, f, indent=2)
+"
+  log "DRY RUN: Done. Session $NEW_SESSIONS/$MAX_SESSIONS today (simulated)."
+  exit 0
+fi
 
 if command -v slimy-run &>/dev/null; then
   log "Running slimy-run auto with generated prompt..."
