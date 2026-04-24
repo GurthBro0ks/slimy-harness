@@ -6,7 +6,7 @@ BLOCKER_REPORT="/home/slimy/blocker-report.md"
 
 log() { echo "[$(date -Iseconds)] [notify-blockers] $*"; }
 
-WEBHOOK_URL="${DISCORD_BLOCKER_WEBHOOK:-}"
+WEBHOOK_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4_6okNjARRtwnf7SfAGV1IJDEzNGGOR4JWdkir8TWGGQLPq0B82rC1r876vRPRpj"
 if [ -z "$WEBHOOK_URL" ]; then
   WEBHOOK_URL=$(grep -oP 'https://discord\.com/api/webhooks/[^\s""]+' /usr/local/bin/sr-notify 2>/dev/null | head -1 || true)
 fi
