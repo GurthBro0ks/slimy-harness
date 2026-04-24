@@ -3,6 +3,7 @@ set -euo pipefail
 
 FEATURE_LIST="/home/slimy/feature_list.json"
 BLOCKER_REPORT="/home/slimy/blocker-report.md"
+BLOCKER_CACHE="/home/slimy/.last-blocker-report.md"
 
 log() { echo "[$(date -Iseconds)] [notify-blockers] $*"; }
 
@@ -21,10 +22,21 @@ if [ ! -f "$FEATURE_LIST" ]; then
   exit 1
 fi
 
-PAYLOAD=$(python3 << 'PYEOF'
-import json
+BLOCKERS_CHANGED=1
+if [ -f "$BLOCKER_REPORT" ] && [ -f "$BLOCKER_CACHE" ]; then
+  CURRENT_MD5=$(md5sum "$BLOCKER_REPORT" | cut -d' ' -f1)
+  CACHED_MD5=$(md5sum "$BLOCKER_CACHE" | cut -d' ' -f1)
+  if [ "$CURRENT_MD5" = "$CACHED_MD5" ]; then
+    BLOCKERS_CHANGED=0
+    log "Blocker report unchanged since last post. Skipping blocker detail."
+  fi
+fi
+
+PAYLOAD=$(BLOCKERS_CHANGED="$BLOCKERS_CHANGED" python3 << 'PYEOF'
+import json, os
 
 feature_list_path = "/home/slimy/feature_list.json"
+blockers_changed = int(os.environ.get("BLOCKERS_CHANGED", "1"))
 
 with open(feature_list_path) as f:
     fl = json.load(f)
@@ -48,7 +60,7 @@ for feat in features:
 
 lines = []
 
-if blocked:
+if blockers_changed and blocked:
     lines.append(f"🔴 **{len(blocked)} tasks need human action:**")
     for feat in blocked[:10]:
         fid = feat.get("id", "?")
@@ -57,8 +69,7 @@ if blocked:
         lines.append(f"- `{fid}` ({proj}): {blocker_desc}")
     lines.append("")
 
-lines.append(f"🟢 **{len(available)} tasks available for auto-dispatch**")
-lines.append(f"📊 **{len(completed)} completed | {len(features)} total**")
+lines.append(f"🟢 **{len(available)} tasks available** | 📊 **{len(completed)} completed | {len(features)} total**")
 
 msg = "\n".join(lines)
 
@@ -72,6 +83,10 @@ if [ -n "$PAYLOAD" ]; then
   HTTP_CODE=$(echo "$RESPONSE" | tail -1)
   if [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "200" ]; then
     log "Discord notification sent (HTTP $HTTP_CODE)"
+    if [ -f "$BLOCKER_REPORT" ]; then
+      cp "$BLOCKER_REPORT" "$BLOCKER_CACHE"
+      log "Blocker cache updated."
+    fi
   else
     log "Discord notification failed (HTTP $HTTP_CODE)"
   fi

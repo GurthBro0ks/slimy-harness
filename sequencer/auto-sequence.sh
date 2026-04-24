@@ -68,9 +68,9 @@ fi
 
   if [ "$STATE_SESSIONS" -ge "$MAX_SESSIONS" ]; then
   log "Max sessions reached ($STATE_SESSIONS/$MAX_SESSIONS). Stopping."
-  if command -v sr-notify &>/dev/null; then
-    sr-notify "Sequencer: max sessions ($MAX_SESSIONS) reached today. Stopping." 2>/dev/null || true
-  fi
+  _WH_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4_6okNjARRtwnf7SfAGV1IJDEzNGGOR4JWdkir8TWGGQLPq0B82rC1r876vRPRpj"
+  curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
+    -d "{\"content\":\"Sequencer: max sessions ($MAX_SESSIONS) reached today. Stopping.\"}" "$_WH_URL" 2>/dev/null || true
   DISPATCH_RESULT="budget"
   return 0
 fi
@@ -322,9 +322,9 @@ data = {
 with open('$PENDING_APPROVAL', 'w') as f:
     json.dump(data, f, indent=2)
 "
-  if command -v sr-notify &>/dev/null; then
-    sr-notify "HIGH-RISK task requires approval: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT. Check $PENDING_APPROVAL" 2>/dev/null || true
-  fi
+  _WH_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4_6okNjARRtwnf7SfAGV1IJDEzNGGOR4JWdkir8TWGGQLPq0B82rC1r876vRPRpj"
+  curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
+    -d "{\"content\":\"HIGH-RISK task requires approval: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT. Check $PENDING_APPROVAL\"}" "$_WH_URL" 2>/dev/null || true
   log "Waiting for human approval. Exiting."
   DISPATCH_RESULT="approval"
   return 0
@@ -475,9 +475,10 @@ with open('$STATE_FILE', 'w') as f:
     json.dump(state, f, indent=2)
 "
 
-if command -v sr-notify &>/dev/null; then
-  sr-notify "Dispatched: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT [$DISPATCH_RISK]" 2>/dev/null || true
-fi
+DISPATCH_WEBHOOK_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4_6okNjARRtwnf7SfAGV1IJDEzNGGOR4JWdkir8TWGGQLPq0B82rC1r876vRPRpj"
+DISPATCH_MSG="Dispatched: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT [$DISPATCH_RISK]"
+curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
+  -d "{\"content\":\"$DISPATCH_MSG\"}" "$DISPATCH_WEBHOOK_URL" 2>/dev/null || true
 
 bash "$SEQUNCER_DIR/notify-blockers.sh" 2>&1 || true
 
