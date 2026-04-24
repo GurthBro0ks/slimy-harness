@@ -56,6 +56,12 @@ mkdir -p "$KB_SESSIONS_DIR"
 cp "$SESSION_REPORT" "$KB_SESSIONS_DIR/report-${REPORT_TS}.json" 2>/dev/null || true
 log "Session report archived to KB."
 
+log "Running auto-close to update feature_list.json from session report..."
+bash "$SEQUNCER_DIR/auto-close.sh" 2>&1 || err "auto-close.sh failed"
+
+log "Generating blocker report..."
+bash "$SEQUNCER_DIR/blocker-report.sh" 2>&1 || err "blocker-report.sh failed"
+
 SESSION_REPORT_JSON=$(python3 -c "
 import json
 with open('$SESSION_REPORT') as f:
@@ -74,19 +80,7 @@ for feat in features:
     status = feat.get('status', 'open')
     if status in ('completed', 'abandoned'):
         continue
-    blocked_by = feat.get('blocked_by', [])
-    has_blocker = False
-    for b in blocked_by:
-        if isinstance(b, str) and b.startswith('manual:'):
-            has_blocker = True
-            break
-        for other in features:
-            if other.get('id') == b and other.get('status', 'open') != 'completed':
-                has_blocker = True
-                break
-        if has_blocker:
-            break
-    if has_blocker:
+    if feat.get('blocked_by') and len(feat.get('blocked_by', [])) > 0:
         continue
     available.append({
         'id': feat.get('id'),
@@ -102,6 +96,7 @@ print(json.dumps(available))
 
 if [ "$AVAILABLE_FEATURES" = "[]" ]; then
   log "No available features. Nothing to dispatch."
+  bash "$SEQUNCER_DIR/notify-blockers.sh" 2>&1 || true
   exit 0
 fi
 
@@ -163,7 +158,7 @@ Last session: project={last_project}, status={last_status}
 Available tasks (sorted by priority):
 {json.dumps(candidates, indent=2)}
 
-Rules: Pick highest priority. Prefer same project as last session for context reuse. Do not retry failed features immediately.
+Rules: Pick highest priority. Prefer same project as last session for context reuse. Do not retry failed features immediately. Prefer features with fewer attempts (lower attempt_count).
 
 Output this exact JSON format (respond with ONLY the JSON, nothing else):
 {{\"next_feature_id\": \"id-here\", \"project\": \"project-name\", \"prompt_type\": \"A\", \"reasoning\": \"brief reason\", \"risk\": \"medium\", \"kb_context_for_agent\": \"\"}}
@@ -250,12 +245,7 @@ for feat in fl.get('features', []):
     if status in ('completed', 'abandoned'):
         continue
     blocked_by = feat.get('blocked_by', [])
-    has_blocker = False
-    for b in blocked_by:
-        if isinstance(b, str) and b.startswith('manual:'):
-            has_blocker = True
-            break
-    if has_blocker:
+    if blocked_by and len(blocked_by) > 0:
         continue
     candidates.append(feat)
 if not candidates:
@@ -455,5 +445,7 @@ with open('$STATE_FILE', 'w') as f:
 if command -v sr-notify &>/dev/null; then
   sr-notify "Dispatched: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT [$DISPATCH_RISK]" 2>/dev/null || true
 fi
+
+bash "$SEQUNCER_DIR/notify-blockers.sh" 2>&1 || true
 
 log "Done. Session $NEW_SESSIONS/$MAX_SESSIONS today."

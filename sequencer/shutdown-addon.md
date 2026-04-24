@@ -31,3 +31,20 @@ Write /home/slimy/session-report.json with this structure:
 
 Validate the JSON before writing:
 python3 -c "import json; json.load(open('/home/slimy/session-report.json')); print('session-report.json: valid')"
+
+### Blocker Reporting
+
+If you encounter something you CANNOT complete because it requires
+human action (manual testing, Discord verification, API key, phone
+access, etc.), set status to "blocked" and fill the blockers array:
+
+"blockers": [
+  {
+    "type": "manual",
+    "description": "Needs manual Discord verification of /leaderboard command",
+    "blocks_feature": "leaderboard-mysql-limit-fix-001"
+  }
+]
+
+Do NOT set passes:true for blocked features. The sequencer will
+handle blocker tracking and notify the human.
