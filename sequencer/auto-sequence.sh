@@ -3,6 +3,9 @@ set -euo pipefail
 
 DRY_RUN="${DRY_RUN:-0}"
 MAX_SESSIONS="${MAX_SESSIONS:-5}"
+LOOP_MODE=0
+STOP_FILE="/home/slimy/.harness-stop"
+LOOP_LOG_DIR="/home/slimy/harness-logs"
 SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
 SESSION_REPORT="/home/slimy/session-report.json"
 FEATURE_LIST="/home/slimy/feature_list.json"
@@ -14,22 +17,42 @@ QWEN_MODEL="${QWEN_MODEL:-qwen2.5:3b}"
 ERROR_LOG="/home/slimy/sequencer-errors.log"
 PENDING_APPROVAL="/home/slimy/pending-approval.json"
 DISPATCH_OUTPUT="/tmp/qwen-dispatch-output.json"
+DISPATCH_RESULT=""
 
-log() { echo "[$(date -Iseconds)] [auto-sequence] $*"; }
+for arg in "$@"; do
+  case "$arg" in
+    --loop) LOOP_MODE=1 ;;
+  esac
+done
+
+log() { echo "[$(date -Iseconds)] [auto-sequence] $*" >&2; }
 err() { echo "[$(date -Iseconds)] [auto-sequence] ERROR: $*" >> "$ERROR_LOG"; }
+loop_log() { echo "[$(date -Iseconds)] [loop] $*" >> "${LOOP_LOG_DIR}/loop-$(date +%Y%m%d).log"; }
 
-if [ ! -f "$SESSION_REPORT" ]; then
-  log "No session report at $SESSION_REPORT. Nothing to do."
-  exit 0
-fi
+run_dispatch() {
+  DISPATCH_RESULT=""
 
-if [ ! -f "$FEATURE_LIST" ]; then
-  err "feature_list.json not found at $FEATURE_LIST"
-  exit 1
-fi
+  if [ -f "$STOP_FILE" ]; then
+    log "Stop file detected ($STOP_FILE). Exiting loop."
+    DISPATCH_RESULT="stopped"
+    return 0
+  fi
 
-TODAY=$(date +%Y-%m-%d)
-NOW_ISO=$(date -Iseconds)
+  if [ ! -f "$SESSION_REPORT" ]; then
+    log "No session report at $SESSION_REPORT. Nothing to do."
+    DISPATCH_RESULT="no_report"
+    return 0
+  fi
+
+  if [ ! -f "$FEATURE_LIST" ]; then
+    err "feature_list.json not found at $FEATURE_LIST"
+    echo "error" >&2
+    DISPATCH_RESULT="error"
+    return 1
+  fi
+
+  TODAY=$(date +%Y-%m-%d)
+  NOW_ISO=$(date -Iseconds)
 
 if [ -f "$STATE_FILE" ]; then
   STATE_DATE=$(python3 -c "import json; print(json.load(open('$STATE_FILE')).get('date',''))" 2>/dev/null || echo "")
@@ -43,12 +66,13 @@ if [ "$STATE_DATE" != "$TODAY" ]; then
   STATE_SESSIONS=0
 fi
 
-if [ "$STATE_SESSIONS" -ge "$MAX_SESSIONS" ]; then
+  if [ "$STATE_SESSIONS" -ge "$MAX_SESSIONS" ]; then
   log "Max sessions reached ($STATE_SESSIONS/$MAX_SESSIONS). Stopping."
   if command -v sr-notify &>/dev/null; then
     sr-notify "Sequencer: max sessions ($MAX_SESSIONS) reached today. Stopping." 2>/dev/null || true
   fi
-  exit 0
+  DISPATCH_RESULT="budget"
+  return 0
 fi
 
 REPORT_TS=$(python3 -c "import json; print(json.load(open('$SESSION_REPORT')).get('timestamp','unknown'))" 2>/dev/null || echo "unknown")
@@ -97,7 +121,8 @@ print(json.dumps(available))
 if [ "$AVAILABLE_FEATURES" = "[]" ]; then
   log "No available features. Nothing to dispatch."
   bash "$SEQUNCER_DIR/notify-blockers.sh" 2>&1 || true
-  exit 0
+  DISPATCH_RESULT="no_work"
+  return 0
 fi
 
 NARRATIVE_SUMMARY=""
@@ -273,7 +298,8 @@ fi
 
 if [ -z "$DISPATCH_FEATURE_ID" ]; then
   log "No feature to dispatch. Exiting."
-  exit 0
+  DISPATCH_RESULT="no_work"
+  return 0
 fi
 
 if [ "$DISPATCH_RISK" = "high" ]; then
@@ -296,7 +322,8 @@ with open('$PENDING_APPROVAL', 'w') as f:
     sr-notify "HIGH-RISK task requires approval: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT. Check $PENDING_APPROVAL" 2>/dev/null || true
   fi
   log "Waiting for human approval. Exiting."
-  exit 0
+  DISPATCH_RESULT="approval"
+  return 0
 fi
 
 log "Dispatching: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT [risk=$DISPATCH_RISK]"
@@ -317,7 +344,8 @@ with open('$STATE_FILE', 'w') as f:
     json.dump(state, f, indent=2)
 "
   log "DRY RUN: Done. Session $NEW_SESSIONS/$MAX_SESSIONS today (simulated)."
-  exit 0
+  DISPATCH_RESULT="dry_run"
+  return 0
 fi
 
 DISPATCH_PROMPT_FILE="/tmp/next-task-prompt.txt"
@@ -400,6 +428,7 @@ else:
 DISPATCH_LOG="/home/slimy/harness-logs/dispatch-${DISPATCH_FEATURE_ID}-$(date +%Y%m%d-%H%M%S).log"
 mkdir -p /home/slimy/harness-logs
 
+SESSION_NAME=""
 if command -v opencode &>/dev/null && command -v tmux &>/dev/null; then
   SESSION_NAME="seq-$(date +%Y%m%d-%H%M%S)"
   log "Dispatching via opencode run in tmux session '$SESSION_NAME'..."
@@ -448,4 +477,92 @@ fi
 
 bash "$SEQUNCER_DIR/notify-blockers.sh" 2>&1 || true
 
-log "Done. Session $NEW_SESSIONS/$MAX_SESSIONS today."
+  log "Done. Session $NEW_SESSIONS/$MAX_SESSIONS today."
+  if [ -n "$SESSION_NAME" ]; then
+    DISPATCH_RESULT="dispatched:$SESSION_NAME"
+  else
+    DISPATCH_RESULT="dispatched:foreground"
+  fi
+}
+
+if [ "$LOOP_MODE" = "1" ]; then
+  mkdir -p "$LOOP_LOG_DIR"
+  loop_log "=== Harness loop started ==="
+
+  while true; do
+    if [ -f "$STOP_FILE" ]; then
+      loop_log "Stop file detected. Exiting loop."
+      loop_log "Exit reason: stopped"
+      break
+    fi
+
+    loop_log "Starting dispatch iteration..."
+    run_dispatch || true
+    RESULT="${DISPATCH_RESULT:-error}"
+    loop_log "Dispatch result: $RESULT"
+
+    case "$RESULT" in
+      stopped)
+        loop_log "Exit reason: stopped"
+        break
+        ;;
+      budget)
+        loop_log "Exit reason: budget exhausted"
+        break
+        ;;
+      no_work)
+        loop_log "Exit reason: no available features"
+        break
+        ;;
+      no_report)
+        loop_log "No session report. Will retry on next iteration."
+        sleep 60
+        continue
+        ;;
+      error)
+        loop_log "Exit reason: error"
+        break
+        ;;
+      approval)
+        loop_log "Exit reason: high-risk approval required"
+        break
+        ;;
+      dry_run)
+        loop_log "DRY RUN completed. Exiting loop."
+        break
+        ;;
+    esac
+
+    AGENT_SESSION=$(echo "$RESULT" | sed 's/dispatched://')
+    if [ -z "$AGENT_SESSION" ] || [ "$AGENT_SESSION" = "foreground" ]; then
+      loop_log "Agent ran in foreground (already completed). Continuing to next iteration."
+      if [ -f "$SESSION_REPORT" ]; then
+        loop_log "Running auto-close for foreground dispatch..."
+        bash "$SEQUNCER_DIR/auto-close.sh" 2>&1 >> "${LOOP_LOG_DIR}/loop-$(date +%Y%m%d).log" || {
+          loop_log "WARNING: auto-close.sh failed"
+        }
+      fi
+      sleep 10
+      continue
+    fi
+
+    loop_log "Waiting for agent session '$AGENT_SESSION' to finish..."
+    while tmux has-session -t "$AGENT_SESSION" 2>/dev/null; do
+      sleep 30
+    done
+    loop_log "Agent session '$AGENT_SESSION' finished."
+
+    if [ -f "$SESSION_REPORT" ]; then
+      loop_log "Running auto-close..."
+      bash "$SEQUNCER_DIR/auto-close.sh" 2>&1 >> "${LOOP_LOG_DIR}/loop-$(date +%Y%m%d).log" || {
+        loop_log "WARNING: auto-close.sh failed"
+      }
+    fi
+
+    loop_log "Iteration complete. Checking for next dispatch..."
+  done
+
+  loop_log "=== Harness loop exited ==="
+else
+  run_dispatch || true
+fi
