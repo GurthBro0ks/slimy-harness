@@ -92,6 +92,7 @@ with open('$SESSION_REPORT') as f:
     print(json.dumps(json.load(f)))
 " 2>/dev/null || echo '{}')
 
+AVAILABLE_FEATURES_FILE="/tmp/sequencer-available-features.json"
 AVAILABLE_FEATURES=$(python3 -c "
 import json
 with open('$FEATURE_LIST') as f:
@@ -117,6 +118,7 @@ for feat in features:
     })
 print(json.dumps(available))
 ")
+echo "$AVAILABLE_FEATURES" > "$AVAILABLE_FEATURES_FILE"
 
 if [ "$AVAILABLE_FEATURES" = "[]" ]; then
   log "No available features. Nothing to dispatch."
@@ -136,36 +138,38 @@ fi
 
 LAST_PROJECT=$(python3 -c "
 import json
-report = json.loads('$SESSION_REPORT_JSON')
+with open('$SESSION_REPORT') as f:
+    report = json.load(f)
 print(report.get('project', ''))
 " 2>/dev/null || echo "")
 LAST_DESC=$(python3 -c "
 import json
-report = json.loads('$SESSION_REPORT_JSON')
+with open('$SESSION_REPORT') as f:
+    report = json.load(f)
 print(report.get('summary', ''))
 " 2>/dev/null || echo "")
 
 KB_CONTEXT=""
 if [ -d "/home/slimy/slimy-kb" ] && [ -x "/home/slimy/slimy-kb/tools/kb-search.sh" ]; then
   KB_RESULT=$(bash /home/slimy/slimy-kb/tools/kb-search.sh "$LAST_PROJECT $LAST_DESC" 2>/dev/null | head -c 1000 || echo "")
-  KB_CONTEXT=$(python3 -c "
-import json
-print(json.dumps('''$KB_RESULT'''))
+  KB_CONTEXT=$(echo "$KB_RESULT" | python3 -c "
+import sys, json
+text = sys.stdin.read()
+print(json.dumps(text))
 " 2>/dev/null || echo '""')
 fi
 
 PROMPT=$(python3 -c "
 import json, sys
 
-session_report_json = '$SESSION_REPORT_JSON'
-available_features_json = '$AVAILABLE_FEATURES'
-
 try:
-    report = json.loads(session_report_json) if session_report_json != '{}' else {}
+    with open('$SESSION_REPORT') as f:
+        report = json.load(f)
 except:
     report = {}
 try:
-    features = json.loads(available_features_json)
+    with open('$AVAILABLE_FEATURES_FILE') as f:
+        features = json.load(f)
 except:
     features = []
 
@@ -304,14 +308,14 @@ fi
 
 if [ "$DISPATCH_RISK" = "high" ]; then
   log "HIGH-risk feature detected. Writing pending-approval.json and pinging Discord."
-  python3 -c "
-import json, datetime
+  _DR="$DISPATCH_REASONING" python3 -c "
+import json, datetime, os
 data = {
     'feature_id': '$DISPATCH_FEATURE_ID',
     'project': '$DISPATCH_PROJECT',
     'prompt_type': '$DISPATCH_PROMPT_TYPE',
     'risk': '$DISPATCH_RISK',
-    'reasoning': '''$DISPATCH_REASONING''',
+    'reasoning': os.environ.get('_DR', ''),
     'timestamp': datetime.datetime.now().isoformat(),
     'status': 'pending_approval'
 }

@@ -6,6 +6,7 @@ read the inputs below and output a single JSON object selecting the next task.
 - You MUST NOT invent features, IDs, or repos that don't exist
 - You MUST NOT pick features where passes:true or status:completed
 - You MUST NOT pick features that have unresolved blockers
+- You MUST NOT pick features from STALE repos (e.g., ned-autonomous is stale and blocked)
 - Prefer: critical > high > medium > low priority
 - Prefer: features with fewer attempts (fresh work over retries)
 - Prefer: features in the same project as the just-completed session (context reuse)
