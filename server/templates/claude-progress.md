@@ -1,5 +1,54 @@
 ---
 
+## 2026-05-25 — GH Tracker Phase 5D.1: Slimy Auth Bridge Discovery
+
+### Project
+- /opt/slimy/gh-tracker
+- GitHub: git@github.com:GurthBro0ks/gh-tracker.git
+- Public URL: https://habitat.slimyai.xyz
+- Slimy Monorepo: /opt/slimy/slimy-monorepo
+
+### What Was Done
+- Performed read-only discovery of Slimy auth system in slimy-monorepo.
+- Found complete email/password auth stack: SlimyUser, SlimySession, SlimyPasswordReset, argon2 hashing, DB-backed sessions.
+- Found login/logout/me/forgot-password/reset-password API routes and pages.
+- Found cookie name `slimy_session` with SameSite=lax, path=/, no domain attribute.
+- Determined habitat.slimyai.xyz CANNOT share cookies with slimyai.xyz (no domain attribute = exact hostname scope).
+- Confirmed GH Tracker has zero auth infrastructure (no middleware, no auth deps, no user model).
+- Confirmed Caddy Basic Auth remains active on habitat.slimyai.xyz.
+- Analyzed integration options A through E.
+- Recommended Option A for Phase 5D.2: keep Basic Auth, add settings UI with gate-info only.
+
+### Verified (Exact Commands)
+- `cd /opt/slimy/gh-tracker && git rev-parse HEAD` — 31d9ca4
+- `cd /opt/slimy/slimy-monorepo && git rev-parse HEAD` — ab3a128
+- `rg -i auth src/ -g "*.ts" -g "*.tsx" -l` in GH Tracker — 0 auth files (only demo-data.ts has word "auth" in commit message)
+- `rg -i auth src/ -g "*.ts" -g "*.tsx" -l` in slimy-monorepo — 64 auth-related files
+- `cat apps/web/lib/slimy-auth/session.ts` — cookie name `slimy_session`, no domain attribute
+- `cat apps/web/prisma/schema.prisma` — SlimyUser, SlimySession, SlimyPasswordReset models confirmed
+- `cat apps/web/app/api/session/forgot-password/route.ts` — forgot-password flow with email + 1h token TTL
+- `cat apps/web/app/api/session/reset-password/route.ts` — reset-password flow with argon2 + session revocation
+- `grep habitat /etc/caddy/Caddyfile` — basicauth block confirmed
+- `curl -I https://habitat.slimyai.xyz` — 401 with WWW-Authenticate: Basic
+- `systemctl status caddy` — active (running)
+- Secret scan — PASS (no secrets in proof)
+- Forbidden file check — PASS (no modifications to monorepo or sbuild)
+
+### Proof
+- /tmp/proof_gh_tracker_phase5d1_slimy_auth_bridge_discovery_20260525T225419Z
+
+### Key Findings
+- Slimy auth is mature and complete (email/password, sessions, reset, email)
+- Cookie domain NOT SET = no cross-subdomain sharing
+- GH Tracker is completely auth-free
+- Basic Auth is the only current protection
+- SSO would require slimy-monorepo cookie domain change or new API endpoint
+
+### Next Action
+Phase 5D.2: Implement Option A — add settings button/modal to GH Tracker with edge-auth info, app version, timer status; create docs/PASSWORD_RESET.md for admin instructions only. No fake auth flows.
+
+---
+
 ## 2026-05-25 — GH Tracker Phase 5C: Acceptance Push
 
 ### Project

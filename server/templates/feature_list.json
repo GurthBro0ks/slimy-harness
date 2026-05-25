@@ -2,7 +2,7 @@
   "_meta": {
     "scope": "server-wide",
     "last_updated": "2026-05-25T22:38:00Z",
-    "last_feature": "gh-tracker-phase-5c-canonical-repo-view-001",
+    "last_feature": "gh-tracker-phase-5d1-slimy-auth-bridge-discovery-001",
     "rules": "NEVER remove features. Only update 'passes' after verification."
   },
   "features": [
@@ -32,6 +32,31 @@
       "blocked_by": [],
       "last_attempted": "2026-05-25T22:34:00Z",
       "attempt_count": 2,
+      "status": "completed"
+    },
+    {
+      "id": "gh-tracker-phase-5d1-slimy-auth-bridge-discovery-001",
+      "project": "gh-tracker",
+      "category": "discovery",
+      "description": "Slimy auth bridge discovery — determine how GH Tracker can integrate with existing slimy-monorepo email/password auth system",
+      "steps": [
+        "Inspect slimy-monorepo auth files",
+        "Inspect GH Tracker auth touchpoints",
+        "Analyze cookie domain sharing",
+        "Analyze edge Basic Auth setup",
+        "Document integration options",
+        "Produce implementation recommendation"
+      ],
+      "passes": true,
+      "manual_qa_required": false,
+      "publish_allowed": false,
+      "notes": "Discovery completed 2026-05-25. Found complete Slimy auth system in slimy-monorepo (email/password, argon2, DB sessions, forgot/reset password, email via Postfix). Cookie 'slimy_session' has no domain attribute = exact hostname scope only. habitat.slimyai.xyz CANNOT share cookies with slimyai.xyz. GH Tracker has zero auth infrastructure. Caddy Basic Auth remains active. Recommended Option A: keep Basic Auth, add settings UI with gate-info only. No fake auth flows. Proof: /tmp/proof_gh_tracker_phase5d1_slimy_auth_bridge_discovery_20260525T225419Z.",
+      "priority": "high",
+      "path": "/opt/slimy/gh-tracker",
+      "remote": "git@github.com:GurthBro0ks/gh-tracker.git",
+      "blocked_by": [],
+      "last_attempted": "2026-05-25T22:54:00Z",
+      "attempt_count": 1,
       "status": "completed"
     },
     {
