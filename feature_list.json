@@ -1,13 +1,71 @@
 {
   "_meta": {
     "scope": "server-wide",
-    "last_updated": "2026-05-28T202500Z",
-    "last_feature": "sbuild-mobile-toolbar-runtime-v2-001",
+    "last_updated": "2026-05-28T204600Z",
+    "last_feature": "sbuild-mobile-toolbar-spacer-v3-001",
     "rules": "NEVER remove features. Only update 'passes' after verification."
   },
   "features": [
     {
-      "id": "sbuild-mobile-toolbar-runtime-v2-001",
+      "id": "sbuild-mobile-toolbar-spacer-v3-001",
+      "project": "sbuild",
+      "category": "bugfix",
+      "description": "Fix mobile toolbar spacer/canvas gap with comprehensive runtime visibility: add spacerRef/canvasControlsRef, requestAnimationFrame measurement, status/settingsOpen triggers, gap detection, and 11-value debug panel with mobile-toolbar-spacer-v3 active marker",
+      "steps": [
+        "cd /opt/slimy/sbuild",
+        "pnpm -r typecheck",
+        "pnpm -r build",
+        "pnpm -r lint",
+        "pnpm -r test",
+        "curl -fsS http://127.0.0.1:3137/health"
+      ],
+      "passes": false,
+      "manual_qa_required": true,
+      "publish_allowed": false,
+      "pushed": false,
+      "commit": "d811dc1",
+      "proof_dir": "/tmp/proof_sbuild_mobile_toolbar_spacer_v3_20260528T204552Z",
+      "notes": "Added spacerRef/canvasControlsRef for runtime spacer/canvas measurement. Double-requestAnimationFrame for post-layout accuracy. Triggers on status/settingsOpen/isMobileViewport changes. Debug panel shows mobile-toolbar-spacer-v3 active with toolbar clientHeight, toolbar scrollHeight, CSS var, spacer clientHeight, status pill heights, canvas offset, overflow, gap detection. 173 editor + 22 server tests pass.",
+      "priority": "high",
+      "path": "/opt/slimy/sbuild",
+      "remote": "git@github.com:GurthBro0ks/sbuild.git",
+      "blocked_by": [
+        "manual:iphone-qa-spacer-alignment-and-gap-detection"
+      ],
+      "last_attempted": "2026-05-28T20:46:00Z",
+      "attempt_count": 1,
+      "status": "done"
+    },
+    {
+      "id": "gh-tracker-phase-6d3-checkpoint-tag-001",
+      "project": "gh-tracker",
+      "category": "release",
+      "description": "Create and push Phase 6D.3 acceptance checkpoint tag v0.6.5-phase6d3",
+      "steps": [
+        "cd /opt/slimy/gh-tracker",
+        "git rev-parse HEAD",
+        "git ls-remote --heads origin main",
+        "git tag -a v0.6.5-phase6d3 27de73d9c45e61445e5d297dfd59b9a97816fc20 -m \"GH Tracker v0.6.5 Phase 6D.3 accepted\"",
+        "git push origin v0.6.5-phase6d3",
+        "git ls-remote --tags origin 'v0.6.5-phase6d3*'"
+      ],
+      "passes": true,
+      "manual_qa_required": false,
+      "publish_allowed": true,
+      "pushed": true,
+      "tag": "v0.6.5-phase6d3",
+      "commit": "27de73d9c45e61445e5d297dfd59b9a97816fc20",
+      "proof_dir": "/tmp/proof_gh_tracker_phase6d3_tag_bookkeeping_20260528T203713Z",
+      "notes": "Acceptance checkpoint tag for Phase 6D.3 Action Center mobile modal polish and pet interaction polish. Tag pushed and remote verified. Bookkeeping only; no app changes.",
+      "priority": "high",
+      "path": "/opt/slimy/gh-tracker",
+      "remote": "git@github.com:GurthBro0ks/gh-tracker.git",
+      "blocked_by": [],
+      "last_attempted": "2026-05-28T20:37:13Z",
+      "attempt_count": 1,
+      "status": "closed"
+    },
+    {
       "project": "sbuild",
       "category": "bugfix",
       "description": "Runtime-measured mobile toolbar/status fix: set both --mobile-topbar-h and --mobile-toolbar-h CSS variables, add height:auto/min-height:0 on fixed topbar, use flex-basis:100%/flex-shrink:0 on status pill, add overflow detection, show mobile-toolbar-runtime-v2 active debug marker with all measured dimensions",

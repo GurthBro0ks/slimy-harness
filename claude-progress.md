@@ -1,3 +1,83 @@
+## 2026-05-28 — sBuild Mobile Toolbar Spacer v3
+
+### Project
+- /opt/slimy/sbuild
+- GitHub: git@github.com:GurthBro0ks/sbuild.git
+
+### What Was Done
+- Fixed mobile toolbar spacer layout to provide comprehensive runtime visibility and ensure accurate measurement.
+- Root cause: Previous fix (a5c0ecf) measured toolbar height correctly but lacked: (1) requestAnimationFrame for post-layout measurement on iOS Safari, (2) re-measurement triggers on status/settingsOpen changes, (3) visibility into spacer/canvas-controls actual positions, (4) gap detection.
+- Added spacerRef and canvasControlsRef to measure actual spacer height and canvas-controls viewport offset at runtime.
+- Extracted measurement into useCallback-wrapped measureMobileToolbar with double-requestAnimationFrame for accurate post-layout readings.
+- Added separate useEffect to trigger measurement on [isMobileViewport, status, settingsOpen, measureMobileToolbar].
+- Debug panel now shows "mobile-toolbar-spacer-v3 active" with 11 runtime values: toolbar clientHeight, toolbar scrollHeight, CSS --mobile-topbar-h, spacer clientHeight, status pill clientHeight, status pill scrollHeight, canvas-controls offsetTop, status text overflows, gap detected.
+- Added 4 new tests (spacer v3 debug values, refs, trigger deps, rAF) and updated 2 existing tests. 173 editor + 22 server tests pass.
+
+### Verified (Exact Commands)
+- `pnpm -r typecheck` — PASS
+- `pnpm -r build` — PASS
+- `pnpm -r lint` — PASS
+- `pnpm -r test` — PASS (editor 173/173, server 22/22)
+- `curl -fsS http://127.0.0.1:3137/health` — PASS (publishAllowed:false)
+- `curl -sS -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:3137/api/publish -H 'content-type: application/json' -d '{}'` — 401
+
+### Proof
+- /tmp/proof_sbuild_mobile_toolbar_spacer_v3_20260528T204552Z
+
+### Changed Files
+- `packages/editor/src/App.tsx`
+- `packages/editor/src/ui-contract.test.js`
+
+### Git
+- Local commit: `d811dc1` — `fix: align mobile toolbar spacer with runtime height`
+- Push: not performed
+
+### Final Dirty Files
+- `project/project.json` (runtime, not source)
+- `project/image-folder.json` (runtime, not source)
+
+### What Remains Unverified
+- Manual iPhone visual QA on https://sbuilder.blackfishfarms.com for spacer alignment, gap detection values, and canvas-controls offset.
+
+### Next Action
+- Run iPhone QA checklist and confirm visual acceptance with debug panel values.
+
+---
+
+
+### Project
+- /opt/slimy/gh-tracker
+- GitHub: git@github.com:GurthBro0ks/gh-tracker.git
+
+### What Was Done
+- Created and pushed acceptance checkpoint tag `v0.6.5-phase6d3` for Phase 6D.3.
+- Tag target: `27de73d9c45e61445e5d297dfd59b9a97816fc20` (action center mobile modal polish + pet interaction polish).
+- No app behavior changes. No Caddy/auth/sbuild/monorepo changes.
+
+### Verified
+- HEAD: `27de73d9c45e61445e5d297dfd59b9a97816fc20`
+- origin/main: `27de73d9c45e61445e5d297dfd59b9a97816fc20`
+- Service: active
+- Local route: 307
+- Public gate: 401 Basic Auth challenge
+- Remote tag: `refs/tags/v0.6.5-phase6d3` → `27de73d9c45e61445e5d297dfd59b9a97816fc20`
+
+### Summary
+Phase 6D.3 Action Center mobile modal polish and pet interaction polish accepted and pushed.
+
+### Proof
+- /tmp/proof_gh_tracker_phase6d3_tag_bookkeeping_20260528T203713Z
+
+### Tag
+- Tag: `v0.6.5-phase6d3`
+- Tag object: `2d1d67846d863cdd855af9e8f6c64397b6a99e85`
+- Tag target: `27de73d9c45e61445e5d297dfd59b9a97816fc20`
+
+### Next Action
+- Phase 6E Repo maintenance workflow / cleanup command planner polish.
+
+---
+
 ## 2026-05-28 — sBuild Runtime-Measured Mobile Toolbar Fix (v2)
 
 ### Project
