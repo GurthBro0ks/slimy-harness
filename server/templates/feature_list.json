@@ -2003,7 +2003,7 @@
         "Verify response: { verified: bool, status: 'success'|'failure'|'pending', blockNumber }"
       ],
       "passes": true,
-      "notes": "Created lib/tx-verify.ts (commit 79702fc). Uses single Etherscan API V2 endpoint with chainid param. Supports ethereum (1) and base (8453). ETHERSCAN_API_KEY=RS4WBXQFVUECGZ7QUCMATI1158RYQCBRW2 set in .env. KALSHI_KEY also updated to 9f19cbe8-94cd-4571-92e9-151d71dbb74b. .env is gitignored \u2014 keys not committed.",
+      "notes": "Created lib/tx-verify.ts (commit 79702fc). Uses single Etherscan API V2 endpoint with chainid param. Supports ethereum (1) and base (8453). ETHERSCAN_API_KEY=[REDACTED_HISTORICAL_SECRET_LIKE_VALUE] set in .env. KALSHI_KEY updated to [REDACTED_HISTORICAL_SECRET_LIKE_VALUE]. .env is gitignored \u2014 keys not committed.",
       "priority": "medium",
       "path": "/opt/slimy/slimy-monorepo",
       "remote": "git@github.com:GurthBro0ks/slimy-monorepo.git",
