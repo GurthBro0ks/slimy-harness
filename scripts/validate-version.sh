@@ -33,7 +33,9 @@ data = json.loads(version_json.read_text(encoding='utf-8'))
 if data.get('version') != version:
     raise SystemExit('VERSION does not match version.json')
 if data.get('status') == 'complete':
-    raise SystemExit('status must not be complete before manual QA')
+    qa = str(data.get('public_owner_login_browser_qa', ''))
+    if qa != 'passed':
+        raise SystemExit('status is complete but public_owner_login_browser_qa is not passed')
 public_url = str(data.get('public_report_url', ''))
 if 'harness.slimyai.xyz' not in public_url:
     raise SystemExit('public_report_url must reference harness.slimyai.xyz')
