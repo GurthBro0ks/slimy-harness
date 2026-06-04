@@ -161,6 +161,8 @@ fi
 header "Check 4: Required Files"
 
 REQUIRED=(
+  "VERSION"
+  "version.json"
   "server-install.sh"
   "server/AGENTS.md"
   "server/init.sh"
@@ -185,6 +187,21 @@ for f in "${REQUIRED[@]}"; do
     fail "missing required file: $f"
   fi
 done
+
+# ============================================================
+# CHECK 4b: Version metadata is valid
+# ============================================================
+header "Check 4b: Version Metadata"
+
+if [[ -x "$REPO_ROOT/scripts/validate-version.sh" ]] || [[ -f "$REPO_ROOT/scripts/validate-version.sh" ]]; then
+  if bash "$REPO_ROOT/scripts/validate-version.sh" >/dev/null 2>&1; then
+    pass "scripts/validate-version.sh"
+  else
+    fail "scripts/validate-version.sh"
+  fi
+else
+  fail "missing scripts/validate-version.sh"
+fi
 
 # ============================================================
 # CHECK 5: AGENTS.md is neutral (not NUC1-specific)

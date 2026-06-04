@@ -33,3 +33,22 @@ All notable changes are documented here.
 
 ### Notes
 - Automated documentation bootstrap on 2026-04-09
+## [0.1.0-harness-reports-public] - 2026-06-04
+### Added
+- Protected public reports subdomain target: `https://harness.slimyai.xyz/reports`
+- Configurable `HARNESS_REPORT_BASE_URL` with example config at `config/harness.env.example`
+- Minimal version files: `VERSION`, `version.json`, and `scripts/validate-version.sh`
+
+### Changed
+- Replaced hardcoded `http://nuc2:3838` notification links in `sequencer/auto-sequence.sh`
+- Prepared version metadata for manual QA closeout without marking the phase complete
+
+### Included Work In This Version
+- wrapper removal / native YOLO
+- sr-notify deterministic stdin routing
+- failed-approach tracking
+- protected `AGENTS.md` + `consolidate-agents`
+- HTML report routes
+- report sync NUC1 -> NUC2
+- public authenticated reports subdomain
+- configurable report base URL

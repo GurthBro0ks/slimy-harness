@@ -6,6 +6,7 @@ MAX_SESSIONS="${MAX_SESSIONS:-5}"
 LOOP_MODE=0
 STOP_FILE="/home/slimy/.harness-stop"
 LOOP_LOG_DIR="/home/slimy/harness-logs"
+HARNESS_ENV_FILE="/home/slimy/.slimy-harness.env"
 SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
 SESSION_REPORT="/home/slimy/session-report.json"
 FEATURE_LIST="/home/slimy/feature_list.json"
@@ -19,6 +20,16 @@ ERROR_LOG="/home/slimy/sequencer-errors.log"
 PENDING_APPROVAL="/home/slimy/pending-approval.json"
 DISPATCH_OUTPUT="/tmp/qwen-dispatch-output.json"
 DISPATCH_RESULT=""
+
+if [ -f "$HARNESS_ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$HARNESS_ENV_FILE"
+  set +a
+fi
+
+HARNESS_REPORT_BASE_URL="${HARNESS_REPORT_BASE_URL:-http://nuc2:3838}"
+HARNESS_REPORT_BASE_URL="${HARNESS_REPORT_BASE_URL%/}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -540,7 +551,7 @@ DISPATCH_WEBHOOK_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4
 DISPATCH_REPORT_FILE=$(ls -t "$KB_SESSIONS_DIR"/report-*.json 2>/dev/null | head -1)
 DISPATCH_REPORT_LINK=""
 if [ -n "$DISPATCH_REPORT_FILE" ]; then
-  DISPATCH_REPORT_LINK="http://nuc2:3838/reports/sessions/$(basename "$DISPATCH_REPORT_FILE")"
+  DISPATCH_REPORT_LINK="$HARNESS_REPORT_BASE_URL/reports/sessions/$(basename "$DISPATCH_REPORT_FILE")"
 fi
 DISPATCH_MSG="Dispatched: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT [$DISPATCH_RISK]"
 if [ -n "$DISPATCH_REPORT_LINK" ]; then
@@ -548,7 +559,7 @@ if [ -n "$DISPATCH_REPORT_LINK" ]; then
 Report: $DISPATCH_REPORT_LINK"
 else
   DISPATCH_MSG="$DISPATCH_MSG
-Reports: http://nuc2:3838/reports"
+Reports: $HARNESS_REPORT_BASE_URL/reports"
 fi
 curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
   -d "{\"content\":\"$DISPATCH_MSG\"}" "$DISPATCH_WEBHOOK_URL" 2>/dev/null || true
