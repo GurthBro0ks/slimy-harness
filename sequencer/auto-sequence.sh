@@ -9,6 +9,7 @@ LOOP_LOG_DIR="/home/slimy/harness-logs"
 SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
 SESSION_REPORT="/home/slimy/session-report.json"
 FEATURE_LIST="/home/slimy/feature_list.json"
+FAILED_APPROACHES="/home/slimy/failed-approaches.json"
 NARRATIVE="/home/slimy/PROJECT_NARRATIVE.md"
 STATE_FILE="/home/slimy/.sequencer-state.json"
 KB_SESSIONS_DIR="/home/slimy/slimy-kb/raw/sessions"
@@ -160,7 +161,7 @@ print(json.dumps(text))
 fi
 
 PROMPT=$(python3 -c "
-import json, sys
+import json, sys, os
 
 try:
     with open('$SESSION_REPORT') as f:
@@ -173,9 +174,36 @@ try:
 except:
     features = []
 
+# SkillOpt: load failed-approaches.json so Qwen can see what NOT to recommend
+failed_approaches = []
+failed_path = '$FAILED_APPROACHES'
+if os.path.isfile(failed_path):
+    try:
+        with open(failed_path) as f:
+            fa = json.load(f)
+        failed_approaches = fa.get('entries', [])
+    except Exception:
+        failed_approaches = []
+
 prio_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
 features.sort(key=lambda x: (prio_order.get(x.get('priority','medium'), 9), x.get('attempt_count', 0)))
 candidates = features[:10]
+
+# Build failed-approaches context block filtered to the candidate features
+candidate_ids = {f.get('id') for f in candidates if f.get('id')}
+matching_fa = [e for e in failed_approaches if e.get('feature_id') in candidate_ids]
+matching_fa.sort(key=lambda e: e.get('timestamp', ''), reverse=True)
+matching_fa = matching_fa[:5]
+
+if matching_fa:
+    fa_lines = []
+    for e in matching_fa:
+        fa_lines.append(
+            f\"- [{e.get('feature_id')}] attempt #{e.get('attempt_number', '?')} ({e.get('timestamp', '?')}):\\n\"\n            f\"    approach: {e.get('approach_description', '(none)')}\\n\"\n            f\"    failure:  {e.get('failure_reason', '(none)')}\"
+        )
+    failed_approaches_context = '\\n'.join(fa_lines)
+else:
+    failed_approaches_context = '(no prior failed approaches recorded for these candidates)'
 
 last_project = report.get('project', 'unknown')
 last_status = report.get('status', 'unknown')
@@ -187,7 +215,10 @@ Last session: project={last_project}, status={last_status}
 Available tasks (sorted by priority):
 {json.dumps(candidates, indent=2)}
 
-Rules: Pick highest priority. Prefer same project as last session for context reuse. Do not retry failed features immediately. Prefer features with fewer attempts (lower attempt_count).
+FAILED APPROACHES (do NOT recommend a feature that the buffer says failed on the most recent attempt unless you have specific new information):
+{failed_approaches_context}
+
+Rules: Pick highest priority. Prefer same project as last session for context reuse. Do not retry failed features immediately. Prefer features with fewer attempts (lower attempt_count). Treat FAILED APPROACHES as hard signals.
 
 Output this exact JSON format (respond with ONLY the JSON, nothing else):
 {{\"next_feature_id\": \"id-here\", \"project\": \"project-name\", \"prompt_type\": \"A\", \"reasoning\": \"brief reason\", \"risk\": \"medium\", \"kb_context_for_agent\": \"\"}}
@@ -356,6 +387,7 @@ DISPATCH_PROMPT_FILE="/tmp/next-task-prompt.txt"
 
 python3 -c "
 import json
+import os
 
 SHUTDOWN_ADDON = '''
 ## SEQUENCER SHUTDOWN (do this LAST, after all other shutdown steps)
@@ -383,6 +415,32 @@ Validate the JSON before writing:
 python3 -c \"import json; json.load(open('/home/slimy/session-report.json')); print('session-report.json: valid')\"
 '''
 
+# SkillOpt: load failed approaches for the selected feature only (up to 5)
+failed_approaches_block = ''
+fa_path = '$FAILED_APPROACHES'
+if os.path.isfile(fa_path):
+    try:
+        with open(fa_path) as f:
+            fa = json.load(f)
+        all_entries = fa.get('entries', [])
+        matching = [e for e in all_entries if e.get('feature_id') == '$DISPATCH_FEATURE_ID']
+        matching.sort(key=lambda e: e.get('timestamp', ''), reverse=True)
+        matching = matching[:5]
+        if matching:
+            lines = ['', '## FAILED APPROACHES (SkillOpt intelligence layer)', '']
+            lines.append('The following approaches for THIS feature have been tried and FAILED. Do NOT repeat them.')
+            lines.append('If a similar approach is unavoidable, document in your session-report.json summary')
+            lines.append('exactly what is different and why you believe it will work this time.')
+            lines.append('')
+            for e in matching:
+                lines.append(f\"- attempt #{e.get('attempt_number','?')} ({e.get('timestamp','?')}):\")
+                lines.append(f\"  approach: {e.get('approach_description','(none)')}\")
+                lines.append(f\"  failure:  {e.get('failure_reason','(none)')}\")
+                lines.append('')
+            failed_approaches_block = '\\n'.join(lines)
+    except Exception as e:
+        failed_approaches_block = ''
+
 prompt = f'''You are an autonomous agent dispatched by the SlimyAI sequencer.
 
 MANDATORY STARTUP (do all before writing any code):
@@ -398,7 +456,7 @@ Read the feature steps and implement them.
 
 Priority: $DISPATCH_RISK
 Reasoning for selection: $DISPATCH_REASONING
-
+{failed_approaches_block}
 BEFORE CODING: write /home/slimy/sprint-contract.md with 3-7 testable done criteria.
 
 MANDATORY SHUTDOWN:

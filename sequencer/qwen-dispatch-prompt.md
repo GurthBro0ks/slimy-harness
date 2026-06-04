@@ -13,6 +13,27 @@ read the inputs below and output a single JSON object selecting the next task.
 - If the last session FAILED on a feature, do NOT immediately retry the same feature
   unless you have new information. Pick a different feature and come back later.
 
+## FAILED APPROACHES — do not repeat these
+
+Before you pick a feature, you will receive a "FAILED APPROACHES" block
+injected by `auto-sequence.sh` (SkillOpt intelligence layer). Each entry
+shows what was tried and why it failed, filtered to features that match
+the candidate you are about to recommend. Rules:
+
+- Treat each entry as a HARD SIGNAL that the listed approach has been
+  tried and did not work. Do NOT pick a feature that the buffer says
+  failed in the same way on the most recent attempt unless you have
+  specific new information.
+- If multiple failed approaches cluster around the same root cause
+  (e.g., "tried X but Y test failed"), the issue is likely in the
+  approach itself, not in the implementation detail. Suggest a
+  different strategy in your reasoning field.
+- The buffer is curated by the consolidator, so trust it.
+
+If no FAILED APPROACHES block is present in the inputs below, it means
+no prior failures have been recorded for the available features. Pick
+freely from the list.
+
 ## Inputs
 
 ### Last Session Report
@@ -20,6 +41,9 @@ read the inputs below and output a single JSON object selecting the next task.
 
 ### Available Features (passes:false, not blocked)
 {AVAILABLE_FEATURES}
+
+### Failed Approaches (filtered to candidates)
+{FAILED_APPROACHES_CONTEXT}
 
 ### Project Narrative (architecture context)
 {NARRATIVE_SUMMARY}
