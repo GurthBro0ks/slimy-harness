@@ -81,6 +81,9 @@ mkdir -p "$KB_SESSIONS_DIR"
 cp "$SESSION_REPORT" "$KB_SESSIONS_DIR/report-${REPORT_TS}.json" 2>/dev/null || true
 log "Session report archived to KB."
 
+log "Syncing session reports to NUC2..."
+bash "$SEQUNCER_DIR/sync-session-reports-to-nuc2.sh" 2>&1 || warn "Session report sync to NUC2 failed (non-fatal)"
+
 log "Running auto-close to update feature_list.json from session report..."
 bash "$SEQUNCER_DIR/auto-close.sh" 2>&1 || err "auto-close.sh failed"
 
@@ -534,7 +537,19 @@ with open('$STATE_FILE', 'w') as f:
 "
 
 DISPATCH_WEBHOOK_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4_6okNjARRtwnf7SfAGV1IJDEzNGGOR4JWdkir8TWGGQLPq0B82rC1r876vRPRpj"
+DISPATCH_REPORT_FILE=$(ls -t "$KB_SESSIONS_DIR"/report-*.json 2>/dev/null | head -1)
+DISPATCH_REPORT_LINK=""
+if [ -n "$DISPATCH_REPORT_FILE" ]; then
+  DISPATCH_REPORT_LINK="http://nuc2:3838/reports/sessions/$(basename "$DISPATCH_REPORT_FILE")"
+fi
 DISPATCH_MSG="Dispatched: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT [$DISPATCH_RISK]"
+if [ -n "$DISPATCH_REPORT_LINK" ]; then
+  DISPATCH_MSG="$DISPATCH_MSG
+Report: $DISPATCH_REPORT_LINK"
+else
+  DISPATCH_MSG="$DISPATCH_MSG
+Reports: http://nuc2:3838/reports"
+fi
 curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
   -d "{\"content\":\"$DISPATCH_MSG\"}" "$DISPATCH_WEBHOOK_URL" 2>/dev/null || true
 
