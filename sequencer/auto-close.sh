@@ -237,3 +237,16 @@ PYEOF
 # Validate both JSONs
 python3 -c "import json; json.load(open('$FEATURE_LIST')); print('[auto-close] feature_list.json validated OK')"
 python3 -c "import json; json.load(open('$FAILED_APPROACHES')); print('[auto-close] failed-approaches.json validated OK')"
+
+# Notify Discord of completion. Fire AFTER feature_list is updated so the
+# notification payload is consistent. The dedupe mechanism in
+# notify-session-complete.sh ensures at most one Discord message per
+# report even if auto-sequence.sh also calls it from run_dispatch().
+NOTIFIER="${HARNESS_ROOT:-/home/slimy/slimy-harness}/sequencer/notify-session-complete.sh"
+if [ -f "$NOTIFIER" ] && [ -f "$SESSION_REPORT" ]; then
+  log "Sending Discord completion notification..."
+  bash "$NOTIFIER" "$SESSION_REPORT" 2>&1 \
+    || log "WARNING: notify-session-complete.sh exited non-zero (non-fatal)"
+else
+  log "Skipping Discord notification (notifier=$NOTIFIER, report=$SESSION_REPORT)"
+fi
