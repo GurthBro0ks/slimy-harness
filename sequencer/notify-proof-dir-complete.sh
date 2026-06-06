@@ -29,6 +29,7 @@ SESSION_REPORT_DEFAULT="/home/slimy/session-report.json"
 DRY_RUN=0
 FORCE=0
 REQUIRE_WEBHOOK=0
+REQUIRE_RELAY=0
 FORWARD_FLAGS=()
 PROOF_DIR=""
 OPT_REPO_PATH=""
@@ -65,6 +66,7 @@ Options:
   --dry-run               Show what would be sent; do not call Discord
   --force                 Bypass dedupe check
   --require-webhook       Exit non-zero if webhook URL is missing
+  --require-relay         Exit non-zero if the NUC2 SSH relay chain fails
 
 If harness-metadata.json exists in the proof dir, it is used as the metadata
 source of truth. CLI flags override metadata file values. Missing fields are
@@ -88,11 +90,15 @@ while [[ $# -gt 0 ]]; do
       FORWARD_FLAGS+=("--force")
       shift
       ;;
-    --require-webhook)
-      REQUIRE_WEBHOOK=1
-      FORWARD_FLAGS+=("--require-webhook")
-      shift
-      ;;
+  --require-webhook)
+    REQUIRE_WEBHOOK=1
+    FORWARD_FLAGS+=("--require-webhook")
+    shift
+    ;;
+  --require-relay)
+    REQUIRE_RELAY=1
+    shift
+    ;;
     --proof-dir)
       PROOF_DIR="${2:-}"
       shift 2
@@ -246,6 +252,106 @@ infer_branch() {
   else
     echo ""
   fi
+}
+
+# ---- relay dedupe helpers (NUC2 local layer) -------------------------------
+#
+# Mirrors the NUC1 send dedupe in notify-session-complete.sh, but is local
+# to the NUC2 relay path: a marker here means "we already SSH-relayed this
+# archived report to NUC1" — not "Discord already received it". The two
+# layers coexist (different suffix) and the dedupe key derivation is the
+# same stable scheme (absolute path + mtime + size) so a repeat call for
+# the same archived report on NUC2 short-circuits before any SSH.
+#
+# Marker file names:
+#   <STATE_DIR>/<key>.relay-sent     — written after a successful SSH chain
+#   <STATE_DIR>/<key>.relay-failed   — diagnostic only, never suppresses
+#                                       future retries
+#
+# Override: HARNESS_NOTIFY_STATE_DIR (default /home/slimy/harness-logs/notify-state)
+
+RELAY_STATE_DIR="${HARNESS_NOTIFY_STATE_DIR:-/home/slimy/harness-logs/notify-state}"
+RELAY_LOG_FILE="/home/slimy/harness-logs/notifications.log"
+RELAY_REDACT_TOKEN="[REDACTED-WEBHOOK]"
+
+relay_redact() {
+  local s="${1-}"
+  s="${s//https:\/\/discord.com\/api\/webhooks\/[A-Za-z0-9_/-]*/$RELAY_REDACT_TOKEN}"
+  s="${s//DISCORD_HARNESS_WEBHOOK_URL/$RELAY_REDACT_TOKEN}"
+  printf '%s' "$s"
+}
+
+relay_ensure_state_dir() {
+  [[ -d "$RELAY_STATE_DIR" ]] || mkdir -p "$RELAY_STATE_DIR" 2>/dev/null || true
+}
+
+relay_compute_dedupe_key() {
+  local path="$1"
+  local abspath mtime size
+  abspath="$(readlink -f -- "$path" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$path")"
+  mtime="$(stat -c '%Y' -- "$path" 2>/dev/null || stat -f '%m' -- "$path" 2>/dev/null || echo 0)"
+  size="$(stat -c '%s' -- "$path" 2>/dev/null || stat -f '%z' -- "$path" 2>/dev/null || echo 0)"
+  printf '%s|%s|%s' "$abspath" "$mtime" "$size" | python3 -c "
+import sys, hashlib
+data = sys.stdin.read().encode('utf-8')
+print(hashlib.sha256(data).hexdigest())
+"
+}
+
+relay_write_marker() {
+  local key="$1"
+  local archived="$2"
+  local basename="$3"
+  local feature_id="$4"
+  local relay_host="$5"
+  local report_url="$6"
+  local marker_status="${7:-success}"
+  local marker_path="$RELAY_STATE_DIR/${key}.relay-sent"
+  relay_ensure_state_dir
+  cat > "$marker_path" <<MEOF
+timestamp:           $NOW_ISO
+archived_report:     $archived
+report_basename:     $basename
+report_url:          $report_url
+feature_id:          $feature_id
+source_nuc:          nuc2
+relay_host:          $relay_host
+relay_status:        $marker_status
+MEOF
+  chmod 0600 "$marker_path" 2>/dev/null || true
+}
+
+relay_write_failed_marker() {
+  local key="$1"
+  local archived="$2"
+  local basename="$3"
+  local feature_id="$4"
+  local relay_host="$5"
+  local ssh_rc="$6"
+  local marker_path="$RELAY_STATE_DIR/${key}.relay-failed"
+  relay_ensure_state_dir
+  cat > "$marker_path" <<MEOF
+timestamp:           $NOW_ISO
+archived_report:     $archived
+report_basename:     $basename
+feature_id:          $feature_id
+source_nuc:          nuc2
+relay_host:          $relay_host
+relay_status:        failed
+ssh_exit_code:       $ssh_rc
+MEOF
+  chmod 0600 "$marker_path" 2>/dev/null || true
+}
+
+relay_log_skip() {
+  local feature_id="$1"
+  local basename="$2"
+  local relay_host="$3"
+  local key_prefix="$4"
+  [[ -d "/home/slimy/harness-logs" ]] || mkdir -p "/home/slimy/harness-logs" 2>/dev/null || true
+  printf '%s relay-skip feature_id=%s report=%s relay_host=%s key=%s reason=%s\n' \
+    "$NOW_ISO" "$feature_id" "$basename" "$relay_host" "$key_prefix" \
+    "already_relayed" >> "$RELAY_LOG_FILE" 2>/dev/null || true
 }
 
 FEATURE_ID=""
@@ -483,29 +589,98 @@ RELAY_HOST="${HARNESS_NOTIFY_RELAY_HOST:-}"
 if [[ -z "$WEBHOOK_URL" ]]; then
   INFERRED_NUC_CHECK="$(infer_nuc_from_hostname "$CURRENT_HOSTNAME")"
   if [[ "$INFERRED_NUC_CHECK" == "nuc2" && -n "$RELAY_HOST" ]]; then
-    log "No webhook on NUC2; relaying to $RELAY_HOST"
+    # ---- NUC2 local relay dedupe (Phase 3 fix) -----------------------------
+    # The dedupe key is sha256(abs_archived_path|mtime|size). For a repeat
+    # call on the same proof dir the archive is reused (line 464-470) so
+    # mtime and size are stable across calls, giving a stable key. With a
+    # marker present we short-circuit before opening any SSH, which is
+    # what makes the second call robust against transient relay-host
+    # unreachability (e.g. port 4421 connection refused).
+    RELAY_REPORT_URL="${HARNESS_REPORT_BASE_URL:-https://harness.slimyai.xyz}/reports/sessions/${REPORT_BASENAME}"
+    RELAY_DEDUPE_KEY="$(relay_compute_dedupe_key "$ARCHIVE_PATH")"
+    RELAY_MARKER_PATH="$RELAY_STATE_DIR/${RELAY_DEDUPE_KEY}.relay-sent"
+    RELAY_FAILED_MARKER_PATH="$RELAY_STATE_DIR/${RELAY_DEDUPE_KEY}.relay-failed"
+
+    if [[ "$DRY_RUN" -eq 0 && "$FORCE" -ne 1 && -f "$RELAY_MARKER_PATH" ]]; then
+      relay_log_skip "$R_FEATURE_ID" "$REPORT_BASENAME" "$RELAY_HOST" "${RELAY_DEDUPE_KEY:0:12}"
+      log "already_relayed: relay_dedupe_key=${RELAY_DEDUPE_KEY:0:12}... report=$REPORT_BASENAME relay_host=$RELAY_HOST (skipping locally; no SSH)"
+      rm -f "$TMP_REPORT"
+      exit 0
+    fi
+
+    log "No webhook on NUC2; relaying to $RELAY_HOST (relay_dedupe_key=${RELAY_DEDUPE_KEY:0:12}...)"
     RELAY_DIR="/tmp/harness-notify-relay"
     RELAY_PAYLOAD="/tmp/harness-notify-relay/${REPORT_BASENAME}"
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-      log "DRY-RUN: would relay $ARCHIVE_PATH to $RELAY_HOST:$RELAY_PAYLOAD"
-      log "DRY-RUN: would ssh-exec notify-session-complete.sh on $RELAY_HOST"
+      if [[ -f "$RELAY_MARKER_PATH" ]]; then
+        log "DRY-RUN: would skip relay (already_relayed marker present)"
+      else
+        log "DRY-RUN: would relay $ARCHIVE_PATH to $RELAY_HOST:$RELAY_PAYLOAD"
+        log "DRY-RUN: would ssh-exec notify-session-complete.sh on $RELAY_HOST"
+        log "DRY-RUN: would write relay marker $RELAY_MARKER_PATH"
+      fi
     else
-      ssh "$RELAY_HOST" "mkdir -p '$RELAY_DIR'" 2>/dev/null || {
-        warn "Cannot mkdir on relay host $RELAY_HOST; skipping relay"
+      # ---- SSH chain with redacted diagnostics (Phase 4) -----------------
+      # We capture each step's exit code ourselves instead of letting
+      # `set -e` kill the script, so the WARN line and the relay-failed
+      # marker can be written before the script exits.
+      _MKDIR_RC=0
+      _MKDIR_ERR_FILE="/tmp/relay_mkdir.$$.err"
+      ssh -o BatchMode=yes -o ConnectTimeout=10 "$RELAY_HOST" "mkdir -p '$RELAY_DIR'" 2>"$_MKDIR_ERR_FILE" || _MKDIR_RC=$?
+      if [[ "$_MKDIR_RC" -ne 0 ]]; then
+        _MKDIR_ERR_RAW="$(cat "$_MKDIR_ERR_FILE" 2>/dev/null | head -3 | tr '\n' ' ')"
+        _MKDIR_ERR="$(relay_redact "$_MKDIR_ERR_RAW")"
+        warn "Relay SSH mkdir failed: relay_host=$RELAY_HOST source_nuc=nuc2 report=$REPORT_BASENAME feature_id=$R_FEATURE_ID ssh_exit_code=$_MKDIR_RC error=$_MKDIR_ERR"
+        relay_write_failed_marker "$RELAY_DEDUPE_KEY" "$ARCHIVE_PATH" "$REPORT_BASENAME" "$R_FEATURE_ID" "$RELAY_HOST" "$_MKDIR_RC" || true
+        rm -f "$_MKDIR_ERR_FILE"
         rm -f "$TMP_REPORT"
+        if [[ "$REQUIRE_RELAY" -eq 1 || "$REQUIRE_WEBHOOK" -eq 1 ]]; then
+          exit 70
+        fi
         exit 0
-      }
-      scp "$ARCHIVE_PATH" "$RELAY_HOST:$RELAY_PAYLOAD" 2>/dev/null || {
-        warn "Cannot scp to relay host $RELAY_HOST; skipping relay"
+      fi
+      rm -f "$_MKDIR_ERR_FILE"
+
+      _SCP_RC=0
+      _SCP_ERR_FILE="/tmp/relay_scp.$$.err"
+      scp -o BatchMode=yes -o ConnectTimeout=10 "$ARCHIVE_PATH" "$RELAY_HOST:$RELAY_PAYLOAD" 2>"$_SCP_ERR_FILE" || _SCP_RC=$?
+      if [[ "$_SCP_RC" -ne 0 ]]; then
+        _SCP_ERR_RAW="$(cat "$_SCP_ERR_FILE" 2>/dev/null | head -3 | tr '\n' ' ')"
+        _SCP_ERR="$(relay_redact "$_SCP_ERR_RAW")"
+        warn "Relay scp failed: relay_host=$RELAY_HOST source_nuc=nuc2 report=$REPORT_BASENAME feature_id=$R_FEATURE_ID ssh_exit_code=$_SCP_RC error=$_SCP_ERR"
+        relay_write_failed_marker "$RELAY_DEDUPE_KEY" "$ARCHIVE_PATH" "$REPORT_BASENAME" "$R_FEATURE_ID" "$RELAY_HOST" "$_SCP_RC" || true
+        rm -f "$_SCP_ERR_FILE"
         rm -f "$TMP_REPORT"
+        if [[ "$REQUIRE_RELAY" -eq 1 || "$REQUIRE_WEBHOOK" -eq 1 ]]; then
+          exit 70
+        fi
         exit 0
-      }
+      fi
+      rm -f "$_SCP_ERR_FILE"
+
       RELAY_ARCHIVE="/home/slimy/slimy-kb/raw/sessions/${REPORT_BASENAME}"
-      ssh "$RELAY_HOST" "mkdir -p /home/slimy/slimy-kb/raw/sessions && cp '$RELAY_PAYLOAD' '$RELAY_ARCHIVE' 2>/dev/null; bash /home/slimy/slimy-harness/sequencer/notify-session-complete.sh '$RELAY_ARCHIVE'" 2>&1 || {
-        warn "Relay notify on $RELAY_HOST failed (non-fatal)"
-      }
-      log "Relay to $RELAY_HOST complete"
+      _RUN_RC=0
+      _RUN_OUT_FILE="/tmp/relay_run.$$.out"
+      _RUN_ERR_FILE="/tmp/relay_run.$$.err"
+      ssh -o BatchMode=yes -o ConnectTimeout=10 "$RELAY_HOST" "mkdir -p /home/slimy/slimy-kb/raw/sessions && cp '$RELAY_PAYLOAD' '$RELAY_ARCHIVE' 2>/dev/null; bash /home/slimy/slimy-harness/sequencer/notify-session-complete.sh '$RELAY_ARCHIVE'" \
+        >"$_RUN_OUT_FILE" 2>"$_RUN_ERR_FILE" || _RUN_RC=$?
+      _RUN_TAIL="$(relay_redact "$(tail -5 "$_RUN_OUT_FILE" 2>/dev/null | tr '\n' ' ')")"
+      _RUN_ERR_RAW="$(head -3 "$_RUN_ERR_FILE" 2>/dev/null | tr '\n' ' ')"
+      _RUN_ERR="$(relay_redact "$_RUN_ERR_RAW")"
+      if [[ "$_RUN_RC" -ne 0 ]]; then
+        warn "Relay notify on $RELAY_HOST failed: relay_host=$RELAY_HOST source_nuc=nuc2 report=$REPORT_BASENAME feature_id=$R_FEATURE_ID ssh_exit_code=$_RUN_RC tail=\"$_RUN_TAIL\" error=$_RUN_ERR"
+        relay_write_failed_marker "$RELAY_DEDUPE_KEY" "$ARCHIVE_PATH" "$REPORT_BASENAME" "$R_FEATURE_ID" "$RELAY_HOST" "$_RUN_RC" || true
+        rm -f "$_RUN_OUT_FILE" "$_RUN_ERR_FILE"
+        rm -f "$TMP_REPORT"
+        if [[ "$REQUIRE_RELAY" -eq 1 || "$REQUIRE_WEBHOOK" -eq 1 ]]; then
+          exit 70
+        fi
+        exit 0
+      fi
+      relay_write_marker "$RELAY_DEDUPE_KEY" "$ARCHIVE_PATH" "$REPORT_BASENAME" "$R_FEATURE_ID" "$RELAY_HOST" "$RELAY_REPORT_URL" "success" || true
+      log "Relay to $RELAY_HOST complete: source_nuc=nuc2 report=$REPORT_BASENAME tail=\"$_RUN_TAIL\""
+      rm -f "$_RUN_OUT_FILE" "$_RUN_ERR_FILE"
     fi
     rm -f "$TMP_REPORT"
     exit 0
