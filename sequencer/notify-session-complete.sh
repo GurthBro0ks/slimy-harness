@@ -8,8 +8,21 @@
 # (OpenCode, Claude, Codex, future) that writes a session report.
 #
 # Usage:
-#   notify-session-complete.sh [--dry-run] [--require-webhook] <session-report.json>
+#   notify-session-complete.sh [--dry-run] [--force] [--mark-dry-run]
+#                              [--require-webhook] <session-report.json>
 #   notify-session-complete.sh --help
+#
+# Idempotency / dedupe:
+#   - By default, AT MOST ONE Discord notification is sent per session report
+#     (identified by absolute path + file mtime + file size).
+#   - After a successful send, a marker file is written under
+#         /home/slimy/harness-logs/notify-state/<key>.sent
+#   - A subsequent invocation that would target the same dedupe key will
+#     log "already_notified" and exit 0 WITHOUT calling Discord.
+#   - --force bypasses the dedupe check (manual retest only).
+#   - --mark-dry-run makes --dry-run write the marker (for unit tests of
+#     the dedupe logic that do not want to call Discord).
+#   - dry-run NEVER writes a marker unless --mark-dry-run is also passed.
 #
 # Behaviour:
 #   - Loads /home/slimy/.slimy-harness.env if present (autodetected).
@@ -23,13 +36,15 @@
 #         ${HARNESS_REPORT_BASE_URL}/reports/sessions/<filename>
 #   - Mentions are sent on WARN/FAIL/BLOCKED, and on SUCCESS only when
 #     HARNESS_NOTIFY_ON_SUCCESS=1 and DISCORD_HARNESS_MENTION is set.
-#   - Attaches an HTML snapshot of the report when
-#     HARNESS_NOTIFY_ATTACH_HTML=1 (renderer: render-session-report-html.py).
-#   - Always attaches the raw session-report.json (Discord max 25 MiB; we
-#     refuse anything larger).
+#   - Default mode is clean link-only. Attachments are opt-in:
+#       HARNESS_NOTIFY_ATTACH_HTML=1  attach rendered .html snapshot
+#       HARNESS_NOTIFY_ATTACH_JSON=1  attach the raw session-report.json
+#     In multipart mode, payload_json is sent as a STRING form field, never
+#     as a Discord file attachment.
 #   - Writes a redacted log line to
 #         /home/slimy/harness-logs/notifications.log
-#   - Handles Discord 429 once by honouring retry_after, then exits.
+#   - Handles Discord 429 once by honouring retry_after. A successful 200/204
+#     is NEVER retried.
 #   - Never turns a passing task into FAIL. Notification failures are logged
 #     and exit non-zero ONLY under --require-webhook.
 #
@@ -42,6 +57,7 @@ set -euo pipefail
 SCRIPT_NAME="notify-session-complete"
 LOG_DIR="/home/slimy/harness-logs"
 LOG_FILE="${LOG_DIR}/notifications.log"
+STATE_DIR="${HARNESS_NOTIFY_STATE_DIR:-/home/slimy/harness-logs/notify-state}"
 HARNESS_ENV_FILE="${HARNESS_ENV_FILE:-/home/slimy/.slimy-harness.env}"
 SEQUNCER_DIR_DEFAULT="/home/slimy/slimy-harness/sequencer"
 RENDERER="${RENDERER:-${SEQUNCER_DIR_DEFAULT}/render-session-report-html.py}"
@@ -51,6 +67,8 @@ REDACT_TOKEN="[REDACTED-WEBHOOK]"
 
 DRY_RUN=0
 REQUIRE_WEBHOOK=0
+FORCE=0
+MARK_DRY_RUN=0
 REPORT_PATH=""
 
 usage() {
@@ -58,11 +76,18 @@ usage() {
 $SCRIPT_NAME — Discord completion webhook for harness agent runs
 
 Usage:
-  $SCRIPT_NAME [--dry-run] [--require-webhook] <session-report.json>
+  $SCRIPT_NAME [--dry-run] [--force] [--mark-dry-run]
+               [--require-webhook] <session-report.json>
   $SCRIPT_NAME --help
 
 Options:
   --dry-run           Show what would be sent; do not call Discord.
+                      Does NOT create a dedupe marker (unless --mark-dry-run).
+  --force             Bypass the dedupe check and send even if a marker
+                      already exists. Manual retest only.
+  --mark-dry-run      When combined with --dry-run, write the dedupe marker
+                      so the next call (without --force) will skip. Useful
+                      for tests of the dedupe logic.
   --require-webhook   Exit non-zero if the webhook URL is missing.
   --help              Show this help.
 
@@ -71,7 +96,9 @@ Environment (loaded from $HARNESS_ENV_FILE if present):
   DISCORD_HARNESS_MENTION       e.g. <@427999592986968074>
   HARNESS_REPORT_BASE_URL       default: https://harness.slimyai.xyz
   HARNESS_NOTIFY_ON_SUCCESS     1 = mention on success too, 0 = off
-  HARNESS_NOTIFY_ATTACH_HTML    1 = attach generated .html snapshot
+  HARNESS_NOTIFY_PING_ON_SUCCESS  alias for HARNESS_NOTIFY_ON_SUCCESS
+  HARNESS_NOTIFY_ATTACH_HTML    1 = attach generated .html snapshot (opt-in)
+  HARNESS_NOTIFY_ATTACH_JSON    1 = attach raw session-report.json (opt-in)
 USG
 }
 
@@ -81,6 +108,14 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run)
       DRY_RUN=1
+      shift
+      ;;
+    --force)
+      FORCE=1
+      shift
+      ;;
+    --mark-dry-run)
+      MARK_DRY_RUN=1
       shift
       ;;
     --require-webhook)
@@ -137,6 +172,71 @@ ensure_log_dir() {
   if [[ ! -d "$LOG_DIR" ]]; then
     mkdir -p "$LOG_DIR" 2>/dev/null || true
   fi
+}
+
+ensure_state_dir() {
+  if [[ ! -d "$STATE_DIR" ]]; then
+    mkdir -p "$STATE_DIR" 2>/dev/null || true
+  fi
+}
+
+# Compute a stable dedupe key for the report file. The key changes if the
+# file's path, mtime, or size changes — which is the right behaviour
+# because a NEW run that overwrites the same path SHOULD be notified.
+compute_dedupe_key() {
+  local path="$1"
+  local abspath mtime size
+  abspath="$(readlink -f -- "$path" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$path")"
+  # stat -c '%Y' is mtime (seconds); %s is size. We want a stable hash
+  # even if the file was just touched by a second agent run.
+  mtime="$(stat -c '%Y' -- "$path" 2>/dev/null || stat -f '%m' -- "$path" 2>/dev/null || echo 0)"
+  size="$(stat -c '%s' -- "$path" 2>/dev/null || stat -f '%z' -- "$path" 2>/dev/null || echo 0)"
+  printf '%s|%s|%s' "$abspath" "$mtime" "$size" | python3 -c "
+import sys, hashlib
+data = sys.stdin.read().encode('utf-8')
+print(hashlib.sha256(data).hexdigest())
+"
+}
+
+# Write a marker file recording that we notified for this dedupe key.
+# The marker is a small JSON-like text file (NOT a Discord attachment).
+write_marker() {
+  local key="$1"
+  local marker_path="$STATE_DIR/$key.sent"
+  local now="$2"
+  local report_path_esc="$3"
+  local status="$4"
+  local feature_id="$5"
+  local report_url="$6"
+  local http_code="$7"
+  local msg_id="${8:-}"
+  ensure_state_dir
+  cat > "$marker_path" <<MEOF
+timestamp:    $now
+report_path:  $report_path_esc
+status:       $status
+feature_id:   $feature_id
+report_url:   $report_url
+http_code:    $http_code
+message_id:   ${msg_id:-}
+MEOF
+  # Restrictive perms — markers can include a Discord message id and we
+  # treat the state dir as sensitive even though no secrets live there.
+  chmod 0600 "$marker_path" 2>/dev/null || true
+}
+
+# Returns 0 if a marker exists for the key, 1 otherwise.
+marker_exists() {
+  local key="$1"
+  [[ -f "$STATE_DIR/$key.sent" ]]
+}
+
+# Returns 0 if any .sent marker in STATE_DIR is older than MAX_AGE days.
+# Used as a soft GC so the dir doesn't grow forever. Failures are silent.
+gc_old_markers() {
+  local max_age_days="${HARNESS_NOTIFY_MARKER_MAX_AGE_DAYS:-30}"
+  [[ -d "$STATE_DIR" ]] || return 0
+  find "$STATE_DIR" -maxdepth 1 -type f -name '*.sent' -mtime "+${max_age_days}" -delete 2>/dev/null || true
 }
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -521,8 +621,14 @@ PY
 if [[ "$DRY_RUN" -eq 1 ]]; then
   _WEBHOOK_LEN="${#DISCORD_HARNESS_WEBHOOK_URL}"
   _WEBHOOK_LEN="${_WEBHOOK_LEN:-0}"
+  # Compute dedupe key (read-only; dry-run does not write unless --mark-dry-run).
+  _DEDUPE_KEY="$(compute_dedupe_key "$REPORT_PATH")"
+  _MARKER_STATE="absent"
+  if marker_exists "$_DEDUPE_KEY"; then
+    _MARKER_STATE="present (would skip with already_notified)"
+  fi
   _DRY_OUT="$(cat <<DRY
-[$SCRIPT_NAME] dry-run
+[notify-session-complete] dry-run
   feature_id:        $FEATURE_ID
   repo:              $REPO
   agent:             $AGENT
@@ -538,12 +644,48 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   attach_json:       $( [[ $ATTACH_JSON -eq 1 ]] && echo "yes ($REPORT_PATH)" || echo "no" )
   content_chars:     ${#CONTENT}
   payload_bytes:     $( wc -c < "$TMPDIR_PAYLOAD" | tr -d ' ' )
+  dedupe_key:        ${_DEDUPE_KEY:0:16}...
+  dedupe_marker:     $_MARKER_STATE
+  force:             $( [[ $FORCE -eq 1 ]] && echo "yes (would bypass dedupe)" || echo "no" )
+  mark_dry_run:      $( [[ $MARK_DRY_RUN -eq 1 ]] && echo "yes (would write marker after dry-run)" || echo "no" )
   payload_json:
 $( head -c 1500 "$TMPDIR_PAYLOAD" )
 DRY
 )"
   redact "$_DRY_OUT"
-  unset _DRY_OUT _WEBHOOK_LEN
+  unset _DRY_OUT _WEBHOOK_LEN _DEDUPE_KEY _MARKER_STATE
+  if [[ "$MARK_DRY_RUN" -eq 1 ]]; then
+    _DEDUPE_KEY="$(compute_dedupe_key "$REPORT_PATH")"
+    write_marker "$_DEDUPE_KEY" \
+      "$(now_iso)" \
+      "$REPORT_PATH" \
+      "$STATUS_KIND" \
+      "${FEATURE_ID:-unknown}" \
+      "$PUBLIC_REPORT_URL" \
+      "dry-run" \
+      ""
+    log "dry-run wrote dedupe marker ${_DEDUPE_KEY:0:12}..."
+  fi
+  exit 0
+fi
+
+# ---- dedupe / idempotency --------------------------------------------------
+
+# Default: at most one Discord notification per dedupe key. The key is
+# (absolute report path, mtime, size) — a new run on the same path with
+# different content gets a NEW key (and is therefore notified once).
+DEDUPE_KEY="$(compute_dedupe_key "$REPORT_PATH")"
+
+# Best-effort GC of very old markers (default 30 days, overridable).
+gc_old_markers || true
+
+if [[ "$FORCE" -ne 1 ]] && marker_exists "$DEDUPE_KEY"; then
+  # Already notified. Log a skip line, exit 0, do NOT touch Discord.
+  ensure_log_dir
+  printf '%s skip status=%s feature_id=%s url=%s reason=%s\n' \
+    "$(now_iso)" "$STATUS_KIND" "${FEATURE_ID:-unknown}" "$PUBLIC_REPORT_URL" \
+    "already_notified" >> "$LOG_FILE"
+  log "already_notified: dedupe_key=${DEDUPE_KEY:0:12}... report=${REPORT_PATH}"
   exit 0
 fi
 
@@ -659,7 +801,19 @@ fi
 # Cleanup body file
 BODY_FILE="/tmp/notify_body.$$.txt"
 BODY_PREVIEW=""
+MSG_ID=""
 if [[ -f "$BODY_FILE" ]]; then
+  # Extract the Discord message id BEFORE the body file is removed so the
+  # dedupe marker can record the delivered message id.
+  MSG_ID="$(python3 -c "
+import json, sys
+try:
+    with open('$BODY_FILE', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    print(data.get('id', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
   BODY_PREVIEW="$(head -c 200 "$BODY_FILE" | tr '\n' ' ')"
   rm -f "$BODY_FILE" 2>/dev/null || true
 fi
@@ -680,6 +834,18 @@ log "discord http=$HTTP_CODE status=$STATUS_KIND feature_id=${FEATURE_ID:-unknow
 
 # Decide final exit
 if [[ "$HTTP_CODE" =~ ^2 ]]; then
+  if [[ -n "$MSG_ID" ]]; then
+    log "discord delivered message_id=$MSG_ID"
+  fi
+  # Write dedupe marker so the next invocation skips.
+  write_marker "$DEDUPE_KEY" \
+    "$(now_iso)" \
+    "$REPORT_PATH" \
+    "$STATUS_KIND" \
+    "${FEATURE_ID:-unknown}" \
+    "$PUBLIC_REPORT_URL" \
+    "$HTTP_CODE" \
+    "$MSG_ID"
   if [[ "$REQUIRE_WEBHOOK" -eq 1 ]]; then
     exit 0
   fi

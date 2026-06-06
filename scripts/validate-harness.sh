@@ -232,6 +232,18 @@ else
   fail "missing sequencer/render-session-report-html.py"
 fi
 
+# 4c.2b - notifier supports --force / --mark-dry-run / dedupe
+if grep -q -- "--force" "$NOTIFIER" 2>/dev/null; then
+  pass "sequencer/notify-session-complete.sh has --force flag"
+else
+  fail "sequencer/notify-session-complete.sh missing --force flag"
+fi
+if grep -q "compute_dedupe_key\|dedupe" "$NOTIFIER" 2>/dev/null; then
+  pass "sequencer/notify-session-complete.sh has dedupe logic"
+else
+  fail "sequencer/notify-session-complete.sh missing dedupe logic"
+fi
+
 # 4c.3 - config/harness.env.example exists
 ENV_EXAMPLE="$REPO_ROOT/config/harness.env.example"
 if [[ -f "$ENV_EXAMPLE" ]]; then
