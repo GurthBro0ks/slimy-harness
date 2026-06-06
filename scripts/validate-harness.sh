@@ -242,6 +242,24 @@ if [[ -f "$ENV_EXAMPLE" ]]; then
   else
     fail "config/harness.env.example missing DISCORD_HARNESS_WEBHOOK_URL"
   fi
+  # Must default HARNESS_NOTIFY_ATTACH_HTML to 0 (clean link-only default)
+  if grep -E "^HARNESS_NOTIFY_ATTACH_HTML=0" "$ENV_EXAMPLE" >/dev/null; then
+    pass "config/harness.env.example defaults HARNESS_NOTIFY_ATTACH_HTML=0 (link-only default)"
+  else
+    fail "config/harness.env.example must default HARNESS_NOTIFY_ATTACH_HTML=0"
+  fi
+  # Must default HARNESS_NOTIFY_ATTACH_JSON to 0
+  if grep -E "^HARNESS_NOTIFY_ATTACH_JSON=0" "$ENV_EXAMPLE" >/dev/null; then
+    pass "config/harness.env.example defaults HARNESS_NOTIFY_ATTACH_JSON=0"
+  else
+    fail "config/harness.env.example must default HARNESS_NOTIFY_ATTACH_JSON=0"
+  fi
+  # Must mention HARNESS_NOTIFY_PING_ON_SUCCESS
+  if grep -q "HARNESS_NOTIFY_PING_ON_SUCCESS" "$ENV_EXAMPLE"; then
+    pass "config/harness.env.example mentions HARNESS_NOTIFY_PING_ON_SUCCESS"
+  else
+    fail "config/harness.env.example missing HARNESS_NOTIFY_PING_ON_SUCCESS"
+  fi
 else
   fail "missing config/harness.env.example"
 fi

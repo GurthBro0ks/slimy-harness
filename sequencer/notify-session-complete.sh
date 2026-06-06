@@ -316,23 +316,37 @@ PUBLIC_REPORT_URL="${HARNESS_REPORT_BASE_URL}/reports/sessions/${ENCODED_BASENAM
 
 # ---- mention decision ------------------------------------------------------
 
+# Mention on WARN/FAIL/BLOCKED, and on SUCCESS when either
+# HARNESS_NOTIFY_ON_SUCCESS=1 OR HARNESS_NOTIFY_PING_ON_SUCCESS=1.
 SHOULD_MENTION=0
 if [[ "$STATUS_KIND" != "success" ]]; then
   SHOULD_MENTION=1
-elif [[ "${HARNESS_NOTIFY_ON_SUCCESS:-0}" == "1" ]]; then
+elif [[ "${HARNESS_NOTIFY_ON_SUCCESS:-0}" == "1" || "${HARNESS_NOTIFY_PING_ON_SUCCESS:-0}" == "1" ]]; then
   SHOULD_MENTION=1
 fi
 
 MENTION_TEXT=""
+MENTION_USER_ID=""
 if [[ "$SHOULD_MENTION" -eq 1 && -n "${DISCORD_HARNESS_MENTION:-}" ]]; then
   MENTION_TEXT="${DISCORD_HARNESS_MENTION} "
+  # Extract numeric user id from <@427999592986968074> or <@!427999592986968074>
+  MENTION_USER_ID="$(printf '%s' "$DISCORD_HARNESS_MENTION" | python3 -c "
+import sys, re
+s = sys.stdin.read()
+m = re.search(r'<@!?(\d+)>', s)
+print(m.group(1) if m else '')
+" 2>/dev/null || echo "")"
 fi
 
-# ---- render HTML attachment ------------------------------------------------
+# ---- attachments (default: NONE) -------------------------------------------
+# By default the message is a clean, readable link-only notification. HTML
+# and JSON attachments are opt-in and must be explicitly enabled. The
+# payload body is NEVER sent as a Discord attachment.
 
 ATTACH_HTML=0
 HTML_PATH=""
-if [[ "${HARNESS_NOTIFY_ATTACH_HTML:-1}" == "1" ]]; then
+# Default is 0 (clean link-only). Opt-in by setting HARNESS_NOTIFY_ATTACH_HTML=1.
+if [[ "${HARNESS_NOTIFY_ATTACH_HTML:-0}" == "1" ]]; then
   if [[ -x "$RENDERER" || -f "$RENDERER" ]]; then
     TMPDIR_HTML="$(mktemp -t session-report.XXXXXX.html)"
     if python3 "$RENDERER" --report-url "$PUBLIC_REPORT_URL" "$REPORT_PATH" "$TMPDIR_HTML" >/dev/null 2>&1; then
@@ -346,9 +360,18 @@ if [[ "${HARNESS_NOTIFY_ATTACH_HTML:-1}" == "1" ]]; then
   fi
 fi
 
-# ---- build Discord content / payload ---------------------------------------
+ATTACH_JSON=0
+# Default is 0 (clean link-only). Opt-in by setting HARNESS_NOTIFY_ATTACH_JSON=1.
+if [[ "${HARNESS_NOTIFY_ATTACH_JSON:-0}" == "1" ]]; then
+  ATTACH_JSON=1
+fi
 
-# Discord max message 2000 chars, attachment #1 is file (we send at most 2 files)
+# ---- build Discord content / embeds ---------------------------------------
+# Discord max content 2000 chars; embeds have a separate limit of 6000 chars
+# (title 256, description 4096, field name 256, field value 1024, total
+# across all fields 6000). The report URL is the OWNER-GATED full HTML
+# report served by mission-control on NUC2.
+
 PROOF_LINE=""
 if [[ -n "$PROOF_DIR" ]]; then
   PROOF_LINE="• proof: \`${PROOF_DIR}\`"
@@ -356,46 +379,140 @@ fi
 
 # Trim summary further if it has odd whitespace / control chars
 SUMMARY_TRIMMED="$(printf '%s' "$SUMMARY_TRIMMED" | tr '\r\n\t' '   ' | sed 's/  */ /g')"
+if [[ "${#SUMMARY_TRIMMED}" -gt 380 ]]; then
+  SUMMARY_TRIMMED="${SUMMARY_TRIMMED:0:380}…"
+fi
 
-CONTENT="$(printf '%s%s **%s** — %s
-• feature_id: \`%s\`
-• repo: \`%s\`
-• status: **%s** (\`%s\`)
-• agent: %s • nuc: %s
-• report: %s
-%s
-• summary: %s
-%s
-' \
-  "$MENTION_TEXT" \
-  "$STATUS_EMOJI" \
-  "${FEATURE_ID:-unknown}" \
-  "${STATUS_RAW:-unknown}" \
-  "${FEATURE_ID:-unknown}" \
-  "${REPO:-unknown}" \
-  "${STATUS_KIND}" \
-  "${STATUS_RAW:-unknown}" \
-  "${AGENT:-?}" \
-  "${NUC:-?}" \
-  "$PUBLIC_REPORT_URL" \
-  "$PROOF_LINE" \
-  "${SUMMARY_TRIMMED:-(no summary)}" \
-  "$( [[ $ATTACH_HTML -eq 1 ]] && echo '• HTML + JSON attached' || echo '• JSON attached' )"
-)"
+# Content: mention (if any) + status line + report URL.
+# We keep the report URL on its own line for easy copy/click.
+if [[ -n "$MENTION_TEXT" ]]; then
+  CONTENT="${MENTION_TEXT}${STATUS_EMOJI} **${FEATURE_ID:-unknown}** — ${STATUS_RAW:-unknown}
+${PROOF_LINE}
+Full HTML report: ${PUBLIC_REPORT_URL}"
+else
+  CONTENT="${STATUS_EMOJI} **${FEATURE_ID:-unknown}** — ${STATUS_RAW:-unknown}
+${PROOF_LINE}
+Full HTML report: ${PUBLIC_REPORT_URL}"
+fi
 
 # Clip to 1900 to leave headroom
 if [[ "${#CONTENT}" -gt 1900 ]]; then
   CONTENT="${CONTENT:0:1900}…"
 fi
 
-# ---- build payload_json via python so escaping is correct ------------------
+# ---- build full payload as JSON (content + allowed_mentions + embeds) -----
 
 TMPDIR_PAYLOAD="$(mktemp -t payload.XXXXXX.json)"
-python3 - "$CONTENT" > "$TMPDIR_PAYLOAD" <<'PY'
-import json, sys
-content = sys.argv[1]
-payload = {"content": content}
-# Discord allows username/avatar_override; harmless to omit.
+ATTACH_HTML_FLAG="$ATTACH_HTML"
+ATTACH_JSON_FLAG="$ATTACH_JSON"
+MENTION_USER_ID="$MENTION_USER_ID" \
+REPO="${REPO:-}" \
+AGENT="${AGENT:-}" \
+NUC="${NUC:-}" \
+SUMMARY_TRIMMED="$SUMMARY_TRIMMED" \
+PROOF_DIR="$PROOF_DIR" \
+PUBLIC_REPORT_URL="$PUBLIC_REPORT_URL" \
+FEATURE_ID="${FEATURE_ID:-unknown}" \
+STATUS_RAW="${STATUS_RAW:-unknown}" \
+STATUS_KIND="$STATUS_KIND" \
+STATUS_EMOJI="$STATUS_EMOJI" \
+CONTENT="$CONTENT" \
+REPORT_BASENAME="$REPORT_BASENAME" \
+ATTACH_HTML_FLAG="$ATTACH_HTML_FLAG" \
+ATTACH_JSON_FLAG="$ATTACH_JSON_FLAG" \
+python3 - > "$TMPDIR_PAYLOAD" <<'PY'
+import json, os, sys
+
+def s(v):
+    if v is None:
+        return ""
+    return str(v)
+
+content = s(os.environ.get("CONTENT", ""))
+feature_id = s(os.environ.get("FEATURE_ID", "unknown"))
+status_raw = s(os.environ.get("STATUS_RAW", "unknown"))
+status_kind = s(os.environ.get("STATUS_KIND", "unknown"))
+status_emoji = s(os.environ.get("STATUS_EMOJI", ""))
+repo = s(os.environ.get("REPO", ""))
+agent = s(os.environ.get("AGENT", ""))
+nuc = s(os.environ.get("NUC", ""))
+proof_dir = s(os.environ.get("PROOF_DIR", ""))
+public_report_url = s(os.environ.get("PUBLIC_REPORT_URL", ""))
+summary = s(os.environ.get("SUMMARY_TRIMMED", ""))
+mention_user_id = s(os.environ.get("MENTION_USER_ID", ""))
+attach_html = s(os.environ.get("ATTACH_HTML_FLAG", "0")) == "1"
+attach_json = s(os.environ.get("ATTACH_JSON_FLAG", "0")) == "1"
+report_basename = s(os.environ.get("REPORT_BASENAME", ""))
+
+# Discord limits: embed title 256, description 4096, field name 256, field value 1024.
+embed_title = "Open full HTML session report"
+if len(embed_title) > 256:
+    embed_title = embed_title[:253] + "…"
+
+# Description: short summary, no URL repetition (URL is in embed.url already).
+desc = ""
+if summary:
+    desc = summary
+if attach_html or attach_json:
+    bits = []
+    if attach_html:
+        bits.append("HTML snapshot attached")
+    if attach_json:
+        bits.append("session-report.json attached")
+    if bits:
+        desc = (desc + "\n\n" if desc else "") + "• " + " • ".join(bits)
+if not desc:
+    desc = "Harness agent run complete. Click the title to open the full report."
+if len(desc) > 4096:
+    desc = desc[:4093] + "…"
+
+embed = {
+    "title": embed_title,
+    "url": public_report_url,
+    "description": desc,
+    "color": {
+        "success":  0x22c55e,
+        "warning":  0xf59e0b,
+        "failure":  0xef4444,
+        "blocked":  0xa855f7,
+    }.get(status_kind, 0x94a3b8),
+    "fields": [
+        {"name": "Status",  "value": f"`{status_raw}`", "inline": True},
+        {"name": "Repo",    "value": f"`{repo or '?'}`", "inline": True},
+        {"name": "Agent",   "value": f"`{agent or '?'}`", "inline": True},
+        {"name": "NUC",     "value": f"`{nuc or '?'}`", "inline": True},
+    ],
+    "footer": {"text": "slimy-harness • notify-session-complete"},
+}
+if proof_dir:
+    # field value limit 1024
+    pv = proof_dir if len(proof_dir) <= 1024 else proof_dir[:1021] + "…"
+    embed["fields"].append({"name": "Proof", "value": f"`{pv}`", "inline": False})
+# Always add a final field that points to the report URL explicitly so it
+# appears in the embed body too, not just in the URL link.
+embed["fields"].append({"name": "Report", "value": public_report_url, "inline": False})
+
+# allowed_mentions: explicit allow-list, no general parse.
+# If we have a user id, allow that user. Never allow role/everyone/here.
+allowed_mentions = {"parse": []}
+if mention_user_id:
+    allowed_mentions["users"] = [mention_user_id]
+
+payload = {
+    "content": content,
+    "allowed_mentions": allowed_mentions,
+    "embeds": [embed],
+}
+
+# Discord rejects payloads > 8 KiB. Hard-clip the description if needed.
+raw = json.dumps(payload, ensure_ascii=False)
+if len(raw) > 7800:
+    embed["description"] = (embed["description"][:200] + "…") if embed["description"] else ""
+    payload = {
+        "content": content,
+        "allowed_mentions": allowed_mentions,
+        "embeds": [embed],
+    }
 print(json.dumps(payload, ensure_ascii=False))
 PY
 
@@ -413,14 +530,16 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   status_raw:        $STATUS_RAW
   status_kind:       $STATUS_KIND
   status_emoji:      $STATUS_EMOJI
-  mention:           $( [[ "$SHOULD_MENTION" -eq 1 ]] && echo "yes ($MENTION_TEXT)" || echo "no" )
+  mention:           $( [[ "$SHOULD_MENTION" -eq 1 ]] && echo "yes" || echo "no" )
+  mention_user_id:   ${MENTION_USER_ID:-(none)}
   public_report_url: $PUBLIC_REPORT_URL
   proof_dir:         ${PROOF_DIR:-(none)}
-  html_attachment:   $( [[ $ATTACH_HTML -eq 1 ]] && echo "$HTML_PATH" || echo "(skipped)" )
-  json_attachment:   $REPORT_PATH
+  attach_html:       $( [[ $ATTACH_HTML -eq 1 ]] && echo "yes ($HTML_PATH)" || echo "no" )
+  attach_json:       $( [[ $ATTACH_JSON -eq 1 ]] && echo "yes ($REPORT_PATH)" || echo "no" )
   content_chars:     ${#CONTENT}
-  payload_preview:   $( head -c 220 "$TMPDIR_PAYLOAD" )...
-  webhook_url:       $REDACT_TOKEN (length=$_WEBHOOK_LEN)
+  payload_bytes:     $( wc -c < "$TMPDIR_PAYLOAD" | tr -d ' ' )
+  payload_json:
+$( head -c 1500 "$TMPDIR_PAYLOAD" )
 DRY
 )"
   redact "$_DRY_OUT"
@@ -465,24 +584,47 @@ if [[ "$ATTACH_HTML" -eq 1 ]]; then
   fi
 fi
 
-# Build curl args. We use multipart/form-data with payload_json as a
-# form field plus file1 (HTML) and file2 (JSON).
-CURL_ARGS=(
-  -sS
-  -o /tmp/notify_body.$$.txt
-  -w '%{http_code}'
-  --max-time 30
-  -H 'User-Agent: slimy-harness/1.0'
-  -F "payload_json=@${TMPDIR_PAYLOAD};type=application/json"
-  -F "file2=@${REPORT_PATH};type=application/json;filename=${REPORT_BASENAME}"
-)
-if [[ "$ATTACH_HTML" -eq 1 ]]; then
-  HTML_BASENAME="${REPORT_BASENAME%.json}.html"
-  CURL_ARGS+=( -F "file1=@${HTML_PATH};type=text/html;filename=${HTML_BASENAME}" )
+# Build curl args.
+# - Default (no attachments): plain application/json POST with the full
+#   payload as the request body. Discord returns 204 No Content.
+# - With attachments: multipart/form-data where payload_json is sent as
+#   a STRING form field (NOT a file), and the actual files go in the
+#   files[] array. This keeps the message clean and avoids a visible
+#   payload_*.json file in the Discord channel.
+# - ?wait=true is appended so Discord returns the message body, which
+#   we use to log the delivered message id and to verify the send.
+
+USE_MULTIPART=0
+if [[ "$ATTACH_HTML" -eq 1 || "$ATTACH_JSON" -eq 1 ]]; then
+  USE_MULTIPART=1
+fi
+
+BODY_FILE="/tmp/notify_body.$$.txt"
+CURL_ARGS=( -sS -o "$BODY_FILE" -w '%{http_code}' --max-time 30
+            -H 'User-Agent: slimy-harness/1.0' )
+
+if [[ "$USE_MULTIPART" -eq 1 ]]; then
+  # payload_json is sent as a STRING form field, never a file.
+  PAYLOAD_STRING="$(cat "$TMPDIR_PAYLOAD")"
+  CURL_ARGS+=( -F "payload_json=${PAYLOAD_STRING}" )
+  unset PAYLOAD_STRING
+  if [[ "$ATTACH_HTML" -eq 1 ]]; then
+    HTML_BASENAME="${REPORT_BASENAME%.json}.html"
+    CURL_ARGS+=( -F "files[0]=@${HTML_PATH};type=text/html;filename=${HTML_BASENAME}" )
+  fi
+  if [[ "$ATTACH_JSON" -eq 1 ]]; then
+    CURL_ARGS+=( -F "files[1]=@${REPORT_PATH};type=application/json;filename=${REPORT_BASENAME}" )
+  fi
+  WEBHOOK_URL_WITH_WAIT="${WEBHOOK_URL}?wait=true"
+else
+  # application/json POST with the full payload as the body.
+  CURL_ARGS+=( -H 'Content-Type: application/json; charset=utf-8'
+               --data-binary "@${TMPDIR_PAYLOAD}" )
+  WEBHOOK_URL_WITH_WAIT="${WEBHOOK_URL}?wait=true"
 fi
 
 send_once() {
-  curl "${CURL_ARGS[@]}" "$WEBHOOK_URL"
+  curl "${CURL_ARGS[@]}" "$WEBHOOK_URL_WITH_WAIT"
 }
 
 HTTP_CODE="$(send_once)"
