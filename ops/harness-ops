@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cmd_help() {
+  cat <<'HELP'
+harness-ops — read-only Harness Ops Manager CLI
+
+Usage:
+  ops/harness-ops <command> [args...]
+
+Commands:
+  help                Show this help
+  notify status       Check notification health, registry, env keys, markers
+  notify dry-run      Preview a Discord notification without sending
+  notify dedupe-check <proof_dir_or_session_id>
+                      Check dedupe marker status without creating/deleting
+
+Safety:
+  - All commands are read-only.
+  - No Discord messages are sent.
+  - No secrets are printed.
+  - Real sends still happen only through existing sequencer notifier scripts.
+HELP
+}
+
+cmd_notify() {
+  local subcmd="${1:-}"
+  shift || true
+  case "$subcmd" in
+    status)
+      exec bash "$ROOT_DIR/ops/notifications/notify-status.sh" "$@"
+      ;;
+    dry-run)
+      exec bash "$ROOT_DIR/ops/notifications/notify-dry-run.sh" "$@"
+      ;;
+    dedupe-check)
+      exec bash "$ROOT_DIR/ops/notifications/dedupe-check.sh" "$@"
+      ;;
+    "")
+      echo "[harness-ops] ERROR: notify requires a subcommand (status, dry-run, dedupe-check)" >&2
+      exit 2
+      ;;
+    *)
+      echo "[harness-ops] ERROR: unknown notify subcommand: $subcmd" >&2
+      exit 2
+      ;;
+  esac
+}
+
+case "${1:-help}" in
+  help|--help|-h)
+    cmd_help
+    ;;
+  notify)
+    cmd_notify "${@:2}"
+    ;;
+  "")
+    cmd_help
+    exit 2
+    ;;
+  *)
+    echo "[harness-ops] ERROR: unknown command: $1" >&2
+    exit 2
+    ;;
+esac
