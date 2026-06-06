@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "registry_name": "harness_notification_registry",
+  "registry_version": "0.1.0",
+  "scope": "read_only_registry",
+  "report_url_base": "https://harness.slimyai.xyz/reports",
+  "session_report_url_pattern": "https://harness.slimyai.xyz/reports/sessions/<filename>",
+  "mention_target_id": "427999592986968074",
+  "template_expectations": {
+    "message_surface": "readable_discord_message",
+    "raw_json_dumps_allowed": false,
+    "smoke_only_reports_should_show": [
+      "SMOKE ONLY",
+      "TESTS NOT RUN"
+    ],
+    "smoke_only_reports_should_not_show": [
+      "TESTS FAIL"
+    ]
+  },
+  "machine_ownership": {
+    "nuc1": {
+      "owns_webhook_env": true,
+      "owns_report_url_base": true,
+      "owns_completion_send": true
+    },
+    "nuc2": {
+      "owns_relay_host_pointer_only": true,
+      "stores_webhook_url": false,
+      "uses_relay_path": true
+    }
+  },
+  "env_keys": {
+    "required_on_nuc1": [
+      "DISCORD_HARNESS_WEBHOOK_URL",
+      "DISCORD_HARNESS_MENTION",
+      "HARNESS_REPORT_BASE_URL"
+    ],
+    "optional_on_nuc1": [
+      "HARNESS_NOTIFY_ON_SUCCESS",
+      "HARNESS_NOTIFY_PING_ON_SUCCESS",
+      "HARNESS_NOTIFY_ATTACH_HTML",
+      "HARNESS_NOTIFY_ATTACH_JSON",
+      "HARNESS_NOTIFY_STATE_DIR"
+    ],
+    "expected_on_nuc2": [
+      "HARNESS_NOTIFY_RELAY_HOST"
+    ],
+    "must_not_live_on_nuc2": [
+      "DISCORD_HARNESS_WEBHOOK_URL"
+    ]
+  },
+  "channels": [
+    {
+      "name": "harness_completion_discord",
+      "type": "discord_completion_notification",
+      "script_path": "sequencer/notify-session-complete.sh",
+      "env_key_names": [
+        "DISCORD_HARNESS_WEBHOOK_URL",
+        "DISCORD_HARNESS_MENTION",
+        "HARNESS_REPORT_BASE_URL",
+        "HARNESS_NOTIFY_ON_SUCCESS",
+        "HARNESS_NOTIFY_PING_ON_SUCCESS",
+        "HARNESS_NOTIFY_ATTACH_HTML",
+        "HARNESS_NOTIFY_ATTACH_JSON",
+        "HARNESS_NOTIFY_STATE_DIR"
+      ],
+      "dedupe_marker_path": "/home/slimy/harness-logs/notify-state/<dedupe_key>.sent",
+      "log_path": "/home/slimy/harness-logs/notifications.log",
+      "input_shape": "session-report.json",
+      "report_url_pattern": "https://harness.slimyai.xyz/reports/sessions/<filename>",
+      "format_expectation": "clean_embed_message"
+    },
+    {
+      "name": "proof_dir_completion_adapter",
+      "type": "proof_dir_to_session_report_adapter",
+      "script_path": "sequencer/notify-proof-dir-complete.sh",
+      "env_key_names": [
+        "DISCORD_HARNESS_WEBHOOK_URL",
+        "HARNESS_NOTIFY_RELAY_HOST",
+        "HARNESS_REPORT_BASE_URL",
+        "HARNESS_NOTIFY_STATE_DIR"
+      ],
+      "archive_path_pattern": "/home/slimy/slimy-kb/raw/sessions/report-proof-<slug>.json",
+      "relay_marker_path": "/home/slimy/harness-logs/notify-state/<relay_key>.relay-sent",
+      "relay_failed_marker_path": "/home/slimy/harness-logs/notify-state/<relay_key>.relay-failed",
+      "format_expectation": "delegates_to_harness_completion_discord"
+    },
+    {
+      "name": "nuc2_relay_notification_path",
+      "type": "ssh_relay_to_nuc1",
+      "script_path": "sequencer/notify-proof-dir-complete.sh",
+      "env_key_names": [
+        "HARNESS_NOTIFY_RELAY_HOST",
+        "HARNESS_NOTIFY_STATE_DIR"
+      ],
+      "relay_host_source": "nuc2_env_key_only",
+      "nuc2_local_marker_paths": [
+        "/home/slimy/harness-logs/notify-state/<relay_key>.relay-sent",
+        "/home/slimy/harness-logs/notify-state/<relay_key>.relay-failed"
+      ],
+      "remote_delivery_target": "sequencer/notify-session-complete.sh on nuc1",
+      "stores_webhook_secret_on_nuc2": false
+    },
+    {
+      "name": "blocker_notification_path",
+      "type": "discord_blocker_notification",
+      "script_path": "sequencer/notify-blockers.sh",
+      "env_key_names": [
+        "DISCORD_HARNESS_WEBHOOK_URL"
+      ],
+      "feature_list_path": "/home/slimy/feature_list.json",
+      "blocker_report_path": "/home/slimy/blocker-report.md",
+      "legacy_cleanup_needed": true,
+      "legacy_fallback_source": "/usr/local/bin/sr-notify",
+      "format_expectation": "summary_text_message"
+    }
+  ],
+  "supporting_components": [
+    {
+      "name": "harness_env_loader",
+      "path": "sequencer/harness-env.sh",
+      "role": "shared_env_loader"
+    },
+    {
+      "name": "session_report_html_renderer",
+      "path": "sequencer/render-session-report-html.py",
+      "role": "html_snapshot_renderer"
+    },
+    {
+      "name": "session_report_sync_to_nuc2",
+      "path": "sequencer/sync-session-reports-to-nuc2.sh",
+      "role": "report_sync_helper"
+    }
+  ]
+}
