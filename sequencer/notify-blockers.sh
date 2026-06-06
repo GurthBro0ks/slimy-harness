@@ -4,16 +4,24 @@ set -euo pipefail
 FEATURE_LIST="/home/slimy/feature_list.json"
 BLOCKER_REPORT="/home/slimy/blocker-report.md"
 BLOCKER_CACHE="/home/slimy/.last-blocker-report.md"
+SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
 
 log() { echo "[$(date -Iseconds)] [notify-blockers] $*"; }
 
-WEBHOOK_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4_6okNjARRtwnf7SfAGV1IJDEzNGGOR4JWdkir8TWGGQLPq0B82rC1r876vRPRpj"
+# Load harness env for DISCORD_HARNESS_WEBHOOK_URL
+# shellcheck disable=SC1090
+if [ -f "${SEQUNCER_DIR}/harness-env.sh" ]; then
+  source "${SEQUNCER_DIR}/harness-env.sh"
+fi
+
+# Use harness webhook from env; fallback to sr-notify for backwards compat
+WEBHOOK_URL="${DISCORD_HARNESS_WEBHOOK_URL:-}"
 if [ -z "$WEBHOOK_URL" ]; then
   WEBHOOK_URL=$(grep -oP 'https://discord\.com/api/webhooks/[^\s""]+' /usr/local/bin/sr-notify 2>/dev/null | head -1 || true)
 fi
 
 if [ -z "$WEBHOOK_URL" ]; then
-  log "No Discord webhook URL found. Set DISCORD_BLOCKER_WEBHOOK or ensure sr-notify has one."
+  log "No Discord webhook URL found. Set DISCORD_HARNESS_WEBHOOK_URL in ${HARNESS_ENV_FILE:-/home/slimy/.slimy-harness.env} or ensure sr-notify has one."
   exit 0
 fi
 

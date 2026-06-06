@@ -80,9 +80,11 @@ fi
 
   if [ "$STATE_SESSIONS" -ge "$MAX_SESSIONS" ]; then
   log "Max sessions reached ($STATE_SESSIONS/$MAX_SESSIONS). Stopping."
-  _WH_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4_6okNjARRtwnf7SfAGV1IJDEzNGGOR4JWdkir8TWGGQLPq0B82rC1r876vRPRpj"
-  curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
-    -d "{\"content\":\"Sequencer: max sessions ($MAX_SESSIONS) reached today. Stopping.\"}" "$_WH_URL" 2>/dev/null || true
+  _WH_URL="${DISCORD_HARNESS_WEBHOOK_URL:-}"
+  if [ -n "$_WH_URL" ]; then
+    curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
+      -d "{\"content\":\"Sequencer: max sessions ($MAX_SESSIONS) reached today. Stopping.\"}" "$_WH_URL" 2>/dev/null || true
+  fi
   DISPATCH_RESULT="budget"
   return 0
 fi
@@ -381,9 +383,11 @@ data = {
 with open('$PENDING_APPROVAL', 'w') as f:
     json.dump(data, f, indent=2)
 "
-  _WH_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4_6okNjARRtwnf7SfAGV1IJDEzNGGOR4JWdkir8TWGGQLPq0B82rC1r876vRPRpj"
-  curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
-    -d "{\"content\":\"HIGH-RISK task requires approval: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT. Check $PENDING_APPROVAL\"}" "$_WH_URL" 2>/dev/null || true
+  _WH_URL="${DISCORD_HARNESS_WEBHOOK_URL:-}"
+  if [ -n "$_WH_URL" ]; then
+    curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
+      -d "{\"content\":\"HIGH-RISK task requires approval: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT. Check $PENDING_APPROVAL\"}" "$_WH_URL" 2>/dev/null || true
+  fi
   log "Waiting for human approval. Exiting."
   DISPATCH_RESULT="approval"
   return 0
@@ -561,7 +565,7 @@ with open('$STATE_FILE', 'w') as f:
     json.dump(state, f, indent=2)
 "
 
-DISPATCH_WEBHOOK_URL="https://discord.com/api/webhooks/1490483635218944132/5IMm4_6okNjARRtwnf7SfAGV1IJDEzNGGOR4JWdkir8TWGGQLPq0B82rC1r876vRPRpj"
+DISPATCH_WEBHOOK_URL="${DISCORD_HARNESS_WEBHOOK_URL:-}"
 DISPATCH_REPORT_FILE=$(ls -t "$KB_SESSIONS_DIR"/report-*.json 2>/dev/null | head -1)
 DISPATCH_REPORT_LINK=""
 if [ -n "$DISPATCH_REPORT_FILE" ]; then
