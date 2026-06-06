@@ -1,16 +1,18 @@
 {
   "name": "slimy-harness",
   "version": "0.1.0-harness-reports-public",
-  "status": "ready-for-final-manual-qa",
+  "status": "complete",
   "date": "2026-06-04",
+  "completed_at": "2026-06-04T16:40:00Z",
   "components": {
     "wrapper_removal": "complete",
     "sr_notify_routing": "complete",
     "skillopt_layer": "complete",
     "html_reports": "complete",
-    "public_reports_subdomain": "ready-for-manual-qa",
+    "public_reports_subdomain": "complete",
     "report_url_config": "complete"
   },
   "public_report_url": "https://harness.slimyai.xyz/reports",
-  "completion_gate": "manual QA must pass before marking complete"
+  "public_owner_login_browser_qa": "passed",
+  "completion_gate": "manual QA passed 2026-06-04"
 }
