@@ -293,9 +293,14 @@ def s(v):
 
 out = {
     "feature_id": s(data.get("feature_id", "")),
-    "repo": s(data.get("project", data.get("repo", ""))),
+    "repo": s(data.get("repo_name", data.get("project", data.get("repo", "")))),
+    "repo_name": s(data.get("repo_name", data.get("project", data.get("repo", "")))),
+    "repo_path": s(data.get("repo_path", "")),
     "agent": s(data.get("agent", "")),
-    "nuc": s(data.get("nuc", "")),
+    "nuc": s(data.get("source_nuc", data.get("nuc", ""))),
+    "source_nuc": s(data.get("source_nuc", data.get("nuc", ""))),
+    "source_hostname": s(data.get("source_hostname", "")),
+    "task_title": s(data.get("task_title", "")),
     "status_raw": s(data.get("status", "unknown")),
     "summary": s(data.get("summary", "")),
     "proof_dir": s(data.get("proof_dir", data.get("proof_directory", ""))),
@@ -328,7 +333,6 @@ FIELDS_TMP="$(mktemp -t fields.XXXXXX.py)"
 cat > "$FIELDS_TMP" <<'PYEOF'
 import json, sys
 d = json.loads(sys.argv[1])
-# 14 fields, NUL-separated, in this order
 fields = [
     d.get("feature_id", ""),
     d.get("repo", ""),
@@ -344,16 +348,22 @@ fields = [
     str(d.get("duration_minutes", 0) or 0),
     "1" if d.get("tests_passed") else "0",
     json.dumps(d.get("blockers", []), ensure_ascii=False),
+    d.get("source_nuc", d.get("nuc", "")),
+    d.get("source_hostname", ""),
+    d.get("repo_name", d.get("repo", "")),
+    d.get("repo_path", ""),
+    d.get("task_title", ""),
 ]
 sys.stdout.write("\n".join(fields))
 sys.stdout.write("\n")
 PYEOF
 
-# Read all 14 lines into bash variables
+# Read all 19 lines into bash variables
 _line_num=0
 FEATURE_ID=""; REPO=""; AGENT=""; NUC=""; STATUS_RAW=""
 SUMMARY=""; PROOF_DIR=""; COMMIT=""; SESSION_ID=""
 CHANGES_JSON=""; TIMESTAMP=""; DURATION=""; TESTS_PASSED=""; BLOCKERS_JSON=""
+SOURCE_NUC=""; SOURCE_HOSTNAME=""; REPO_NAME=""; REPO_PATH=""; TASK_TITLE=""
 while IFS= read -r _line; do
   case "$_line_num" in
     0)  FEATURE_ID="$_line" ;;
@@ -370,6 +380,11 @@ while IFS= read -r _line; do
     11) DURATION="$_line" ;;
     12) TESTS_PASSED="$_line" ;;
     13) BLOCKERS_JSON="$_line" ;;
+    14) SOURCE_NUC="$_line" ;;
+    15) SOURCE_HOSTNAME="$_line" ;;
+    16) REPO_NAME="$_line" ;;
+    17) REPO_PATH="$_line" ;;
+    18) TASK_TITLE="$_line" ;;
   esac
   _line_num=$((_line_num + 1))
 done < <(python3 "$FIELDS_TMP" "$PARSED_JSON" 2>/dev/null)
@@ -507,8 +522,14 @@ ATTACH_HTML_FLAG="$ATTACH_HTML"
 ATTACH_JSON_FLAG="$ATTACH_JSON"
 MENTION_USER_ID="$MENTION_USER_ID" \
 REPO="${REPO:-}" \
+REPO_NAME="${REPO_NAME:-}" \
 AGENT="${AGENT:-}" \
 NUC="${NUC:-}" \
+SOURCE_NUC="${SOURCE_NUC:-}" \
+SOURCE_HOSTNAME="${SOURCE_HOSTNAME:-}" \
+REPO_PATH="${REPO_PATH:-}" \
+TASK_TITLE="${TASK_TITLE:-}" \
+COMMIT="${COMMIT:-}" \
 SUMMARY_TRIMMED="$SUMMARY_TRIMMED" \
 PROOF_DIR="$PROOF_DIR" \
 PUBLIC_REPORT_URL="$PUBLIC_REPORT_URL" \
@@ -534,8 +555,14 @@ status_raw = s(os.environ.get("STATUS_RAW", "unknown"))
 status_kind = s(os.environ.get("STATUS_KIND", "unknown"))
 status_emoji = s(os.environ.get("STATUS_EMOJI", ""))
 repo = s(os.environ.get("REPO", ""))
+repo_name = s(os.environ.get("REPO_NAME", ""))
 agent = s(os.environ.get("AGENT", ""))
 nuc = s(os.environ.get("NUC", ""))
+source_nuc = s(os.environ.get("SOURCE_NUC", ""))
+source_hostname = s(os.environ.get("SOURCE_HOSTNAME", ""))
+repo_path = s(os.environ.get("REPO_PATH", ""))
+task_title = s(os.environ.get("TASK_TITLE", ""))
+commit = s(os.environ.get("COMMIT", ""))
 proof_dir = s(os.environ.get("PROOF_DIR", ""))
 public_report_url = s(os.environ.get("PUBLIC_REPORT_URL", ""))
 summary = s(os.environ.get("SUMMARY_TRIMMED", ""))
@@ -544,12 +571,21 @@ attach_html = s(os.environ.get("ATTACH_HTML_FLAG", "0")) == "1"
 attach_json = s(os.environ.get("ATTACH_JSON_FLAG", "0")) == "1"
 report_basename = s(os.environ.get("REPORT_BASENAME", ""))
 
-# Discord limits: embed title 256, description 4096, field name 256, field value 1024.
+display_repo = repo_name or repo or "unknown"
+display_nuc = source_nuc or nuc or "unknown"
+display_source = display_nuc
+if source_hostname and source_hostname != display_nuc and source_hostname != "unknown":
+    display_source = f"{display_nuc} / {source_hostname}"
+
 embed_title = "Open full HTML session report"
+if task_title:
+    embed_title = task_title
+    if len(embed_title) > 200:
+        embed_title = embed_title[:197] + "…"
+    embed_title += " — Report"
 if len(embed_title) > 256:
     embed_title = embed_title[:253] + "…"
 
-# Description: short summary, no URL repetition (URL is in embed.url already).
 desc = ""
 if summary:
     desc = summary
@@ -578,22 +614,21 @@ embed = {
     }.get(status_kind, 0x94a3b8),
     "fields": [
         {"name": "Status",  "value": f"`{status_raw}`", "inline": True},
-        {"name": "Repo",    "value": f"`{repo or '?'}`", "inline": True},
-        {"name": "Agent",   "value": f"`{agent or '?'}`", "inline": True},
-        {"name": "NUC",     "value": f"`{nuc or '?'}`", "inline": True},
+        {"name": "Repo",    "value": f"`{display_repo}`", "inline": True},
+        {"name": "Agent",   "value": f"`{agent or 'unknown'}`", "inline": True},
+        {"name": "NUC",     "value": f"`{display_nuc}`", "inline": True},
     ],
     "footer": {"text": "slimy-harness • notify-session-complete"},
 }
+if display_source and display_source != display_nuc:
+    embed["fields"].append({"name": "Source", "value": f"`{display_source}`", "inline": True})
+if commit:
+    embed["fields"].append({"name": "Commit", "value": f"`{commit}`", "inline": True})
 if proof_dir:
-    # field value limit 1024
     pv = proof_dir if len(proof_dir) <= 1024 else proof_dir[:1021] + "…"
     embed["fields"].append({"name": "Proof", "value": f"`{pv}`", "inline": False})
-# Always add a final field that points to the report URL explicitly so it
-# appears in the embed body too, not just in the URL link.
 embed["fields"].append({"name": "Report", "value": public_report_url, "inline": False})
 
-# allowed_mentions: explicit allow-list, no general parse.
-# If we have a user id, allow that user. Never allow role/everyone/here.
 allowed_mentions = {"parse": []}
 if mention_user_id:
     allowed_mentions["users"] = [mention_user_id]
@@ -604,7 +639,6 @@ payload = {
     "embeds": [embed],
 }
 
-# Discord rejects payloads > 8 KiB. Hard-clip the description if needed.
 raw = json.dumps(payload, ensure_ascii=False)
 if len(raw) > 7800:
     embed["description"] = (embed["description"][:200] + "…") if embed["description"] else ""
@@ -631,8 +665,14 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
 [notify-session-complete] dry-run
   feature_id:        $FEATURE_ID
   repo:              $REPO
+  repo_name:         ${REPO_NAME:-}
   agent:             $AGENT
   nuc:               $NUC
+  source_nuc:        ${SOURCE_NUC:-}
+  source_hostname:   ${SOURCE_HOSTNAME:-}
+  repo_path:         ${REPO_PATH:-}
+  task_title:        ${TASK_TITLE:-}
+  commit:            ${COMMIT:-}
   status_raw:        $STATUS_RAW
   status_kind:       $STATUS_KIND
   status_emoji:      $STATUS_EMOJI
