@@ -98,6 +98,20 @@ bash "$SEQUNCER_DIR/sync-session-reports-to-nuc2.sh" 2>&1 || warn "Session repor
 log "Running auto-close to update feature_list.json from session report..."
 bash "$SEQUNCER_DIR/auto-close.sh" 2>&1 || err "auto-close.sh failed"
 
+# Notify Discord of completion (Owner-gated report link + HTML/JSON
+# attachments). Fire AFTER auto-close so feature_list is up to date when
+# the human reads the message, and AFTER the NUC2 sync has been attempted
+# (sync is non-fatal above). Notification failure must NOT turn a passing
+# closeout into FAIL — the script handles that itself with a non-zero
+# guard, and we keep || true as a second line of defence.
+if [ -f "$SESSION_REPORT" ]; then
+  log "Sending Discord completion notification..."
+  bash "$SEQUNCER_DIR/notify-session-complete.sh" "$SESSION_REPORT" 2>&1 \
+    || warn "notify-session-complete.sh exited non-zero (non-fatal)"
+else
+  log "Skipping Discord notification: $SESSION_REPORT missing."
+fi
+
 log "Generating blocker report..."
 bash "$SEQUNCER_DIR/blocker-report.sh" 2>&1 || err "blocker-report.sh failed"
 

@@ -204,6 +204,91 @@ else
 fi
 
 # ============================================================
+# CHECK 4c: Discord completion webhook feature
+# ============================================================
+header "Check 4c: Discord Completion Webhook"
+
+# 4c.1 - notifier script exists and passes bash -n
+NOTIFIER="$REPO_ROOT/sequencer/notify-session-complete.sh"
+if [[ -f "$NOTIFIER" ]]; then
+  if bash -n "$NOTIFIER" 2>/dev/null; then
+    pass "sequencer/notify-session-complete.sh (bash -n)"
+  else
+    fail "sequencer/notify-session-complete.sh has syntax errors"
+  fi
+else
+  fail "missing sequencer/notify-session-complete.sh"
+fi
+
+# 4c.2 - HTML renderer exists and compiles
+RENDERER="$REPO_ROOT/sequencer/render-session-report-html.py"
+if [[ -f "$RENDERER" ]]; then
+  if python3 -m py_compile "$RENDERER" 2>/dev/null; then
+    pass "sequencer/render-session-report-html.py (py_compile)"
+  else
+    fail "sequencer/render-session-report-html.py has compile errors"
+  fi
+else
+  fail "missing sequencer/render-session-report-html.py"
+fi
+
+# 4c.3 - config/harness.env.example exists
+ENV_EXAMPLE="$REPO_ROOT/config/harness.env.example"
+if [[ -f "$ENV_EXAMPLE" ]]; then
+  pass "config/harness.env.example exists"
+  # Must mention DISCORD_HARNESS_WEBHOOK_URL
+  if grep -q "DISCORD_HARNESS_WEBHOOK_URL" "$ENV_EXAMPLE"; then
+    pass "config/harness.env.example mentions DISCORD_HARNESS_WEBHOOK_URL"
+  else
+    fail "config/harness.env.example missing DISCORD_HARNESS_WEBHOOK_URL"
+  fi
+else
+  fail "missing config/harness.env.example"
+fi
+
+# 4c.4 - no real Discord webhook URL is committed in the new feature files
+# (the new completion webhook feature is delivered by sequencer/notify-session-complete.sh
+# and sequencer/render-session-report-html.py; it must read the URL from env, not bake it in)
+FEATURE_FILES=(
+  "$REPO_ROOT/sequencer/notify-session-complete.sh"
+  "$REPO_ROOT/sequencer/render-session-report-html.py"
+  "$REPO_ROOT/config/harness.env.example"
+)
+FEATURE_LEAK=""
+for f in "${FEATURE_FILES[@]}"; do
+  [[ -f "$f" ]] || continue
+  found=$(grep -In "https://discord\.com/api/webhooks/[0-9]\+/[A-Za-z0-9_-]\+" "$f" 2>/dev/null || true)
+  if [[ -n "$found" ]]; then
+    FEATURE_LEAK+="$f: $found"$'\n'
+  fi
+done
+if [[ -z "$FEATURE_LEAK" ]]; then
+  pass "no real Discord webhook URL in new feature files"
+else
+  fail "new feature files contain a real Discord webhook URL:"
+  echo -n "$FEATURE_LEAK" | while read -r l; do info "  $l"; done
+fi
+
+# 4c.5 - WARN: any pre-existing webhook URL leaks in OTHER files. This is a
+# WARN (not a FAIL) because the URLs in sequencer/notify-blockers.sh and
+# sequencer/auto-sequence.sh were committed BEFORE this feature and are out
+# of scope for the current task. Tracking here so the issue is visible.
+OTHER_LEAK=$(grep -RIn "https://discord\.com/api/webhooks/[0-9]\+/[A-Za-z0-9_-]\+" \
+  "$REPO_ROOT" --include="*.sh" --include="*.py" --include="*.md" \
+  --include="*.json" --include="*.yml" --include="*.yaml" --include="*.env*" \
+  --include="*.example" \
+  --exclude-dir=".git" \
+  --exclude="notify-session-complete.sh" \
+  --exclude="render-session-report-html.py" \
+  --exclude="harness.env.example" 2>/dev/null || true)
+if [[ -z "$OTHER_LEAK" ]]; then
+  pass "no pre-existing webhook URL leaks in other files"
+else
+  warn "pre-existing webhook URL leaks in other files (out of scope, track separately):"
+  echo "$OTHER_LEAK" | while read -r l; do info "  $l"; done
+fi
+
+# ============================================================
 # CHECK 5: AGENTS.md is neutral (not NUC1-specific)
 # ============================================================
 header "Check 5: AGENTS.md Host-Neutrality"
