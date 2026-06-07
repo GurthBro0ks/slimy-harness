@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "mode": "dry_run_only",
+  "managed_session_namespace": "ops6-",
+  "workspaces": [
+    {
+      "workspace_id": "harness",
+      "canonical_session_name": "ops6-harness",
+      "target_machine": "nuc1",
+      "target_paths": [
+        "/home/slimy/slimy-harness"
+      ],
+      "legacy_conflicts": [
+        "harness"
+      ],
+      "windows": [
+        { "window_name": "repo", "shell_start_directory": "/home/slimy/slimy-harness" },
+        { "window_name": "proof", "shell_start_directory": "/home/slimy/slimy-harness" },
+        { "window_name": "reports", "shell_start_directory": "/home/slimy" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "git status --short",
+        "bash scripts/validate-harness.sh"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "medium",
+      "notes": "Local harness workspace. Do not auto-run agents by default."
+    },
+    {
+      "workspace_id": "research-farm",
+      "canonical_session_name": "ops6-research-farm",
+      "target_machine": "nuc1",
+      "target_paths": [
+        "/home/slimy/kb",
+        "/home/slimy/slimy-harness"
+      ],
+      "legacy_conflicts": [
+        "kb",
+        "research"
+      ],
+      "windows": [
+        { "window_name": "kb", "shell_start_directory": "/home/slimy/kb" },
+        { "window_name": "runs", "shell_start_directory": "/home/slimy/kb" },
+        { "window_name": "docs", "shell_start_directory": "/home/slimy/slimy-harness" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "git status --short",
+        "bash tools/kb-lint.sh"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "medium",
+      "notes": "KB plus harness reference workspace."
+    },
+    {
+      "workspace_id": "gh-tracker",
+      "canonical_session_name": "ops6-gh-tracker",
+      "target_machine": "nuc1",
+      "target_paths": [
+        "/opt/slimy/gh-tracker",
+        "/home/slimy/slimy-harness"
+      ],
+      "legacy_conflicts": [
+        "gh"
+      ],
+      "windows": [
+        { "window_name": "repo", "shell_start_directory": "/opt/slimy/gh-tracker" },
+        { "window_name": "app", "shell_start_directory": "/opt/slimy/gh-tracker" },
+        { "window_name": "data", "shell_start_directory": "/home/slimy/slimy-harness" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "git status --short",
+        "curl -I https://habitat.slimyai.xyz/"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "medium",
+      "notes": "Tracker/Habitat workspace. Network checks remain copy-only."
+    },
+    {
+      "workspace_id": "supersnail",
+      "canonical_session_name": "ops6-supersnail",
+      "target_machine": "nuc1",
+      "target_paths": [
+        "/opt/slimy/slimy-monorepo"
+      ],
+      "legacy_conflicts": [
+        "bot",
+        "slime-link"
+      ],
+      "windows": [
+        { "window_name": "monorepo", "shell_start_directory": "/opt/slimy/slimy-monorepo" },
+        { "window_name": "bot", "shell_start_directory": "/opt/slimy/slimy-monorepo" },
+        { "window_name": "web", "shell_start_directory": "/opt/slimy/slimy-monorepo" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "pnpm --filter @slimy/bot test"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "medium",
+      "notes": "Monorepo shell workspace only."
+    },
+    {
+      "workspace_id": "sbuild",
+      "canonical_session_name": "ops6-sbuild",
+      "target_machine": "nuc1",
+      "target_paths": [
+        "/opt/slimy/sbuild"
+      ],
+      "legacy_conflicts": [
+        "sbuild"
+      ],
+      "windows": [
+        { "window_name": "repo", "shell_start_directory": "/opt/slimy/sbuild" },
+        { "window_name": "app", "shell_start_directory": "/opt/slimy/sbuild" },
+        { "window_name": "proof", "shell_start_directory": "/home/slimy" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "pnpm -r test",
+        "bash scripts/smoke-sbuild.sh"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "medium",
+      "notes": "Known local repo path exists on this host."
+    },
+    {
+      "workspace_id": "nuc1-bot",
+      "canonical_session_name": "ops6-nuc1-bot",
+      "target_machine": "nuc1",
+      "target_paths": [
+        "/opt/slimy/slimy-monorepo"
+      ],
+      "legacy_conflicts": [
+        "bot"
+      ],
+      "windows": [
+        { "window_name": "bot", "shell_start_directory": "/opt/slimy/slimy-monorepo" },
+        { "window_name": "logs", "shell_start_directory": "/opt/slimy/slimy-monorepo" },
+        { "window_name": "proof", "shell_start_directory": "/home/slimy" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "pm2 list",
+        "pnpm --filter @slimy/bot build"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "medium",
+      "notes": "Bot-focused NUC1 shell workspace."
+    },
+    {
+      "workspace_id": "nuc2-bot",
+      "canonical_session_name": "ops6-nuc2-bot",
+      "target_machine": "nuc2",
+      "target_paths": [
+        "ssh nuc2 (copy-only remote context)"
+      ],
+      "legacy_conflicts": [
+        "bd"
+      ],
+      "windows": [
+        { "window_name": "relay-notes", "shell_start_directory": "/home/slimy" },
+        { "window_name": "copy-only", "shell_start_directory": "/home/slimy" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "ssh nuc2",
+        "remote repo commands only after manual confirmation"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "medium",
+      "notes": "Optional shallow remote guidance only. No remote execution by default."
+    },
+    {
+      "workspace_id": "nuc1-builder",
+      "canonical_session_name": "ops6-nuc1-builder",
+      "target_machine": "nuc1",
+      "target_paths": [
+        "/home/slimy"
+      ],
+      "legacy_conflicts": [
+        "builder"
+      ],
+      "windows": [
+        { "window_name": "builder", "shell_start_directory": "/home/slimy" },
+        { "window_name": "proof", "shell_start_directory": "/home/slimy" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "repo-specific commands after manual selection"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "medium",
+      "notes": "General builder shell workspace."
+    },
+    {
+      "workspace_id": "nuc1-find",
+      "canonical_session_name": "ops6-nuc1-find",
+      "target_machine": "nuc1",
+      "target_paths": [
+        "/home/slimy"
+      ],
+      "legacy_conflicts": [
+        "find",
+        "search"
+      ],
+      "windows": [
+        { "window_name": "find", "shell_start_directory": "/home/slimy" },
+        { "window_name": "notes", "shell_start_directory": "/home/slimy" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "git status --short",
+        "ss -tlnp"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "low",
+      "notes": "Read-only search/triage shell workspace."
+    },
+    {
+      "workspace_id": "diagnostics",
+      "canonical_session_name": "ops6-diagnostics",
+      "target_machine": "nuc1",
+      "target_paths": [
+        "/home/slimy/slimy-harness"
+      ],
+      "legacy_conflicts": [
+        "diagnostics"
+      ],
+      "windows": [
+        { "window_name": "status", "shell_start_directory": "/home/slimy" },
+        { "window_name": "logs", "shell_start_directory": "/home/slimy/slimy-harness" },
+        { "window_name": "proof", "shell_start_directory": "/home/slimy" }
+      ],
+      "default_behavior": "shell_only",
+      "copy_only_commands": [
+        "git status --short",
+        "systemctl --user list-timers --all",
+        "pm2 list"
+      ],
+      "live_create_allowed": false,
+      "live_reuse_allowed": false,
+      "risk": "low",
+      "notes": "Cross-project diagnostics workspace."
+    }
+  ]
+}

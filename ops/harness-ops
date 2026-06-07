@@ -20,6 +20,9 @@ Commands:
   schedule validate   Validate schedule inventory tooling (read-only)
   tmux inventory      Read-only tmux session/window/pane inventory
   tmux validate       Validate tmux inventory tooling (read-only)
+  workspace plan      Read-only tmux workspace planner
+  workspace dry-run   Read-only future tmux command preview
+  workspace validate  Validate dry-run workspace planner (read-only)
 
 Safety:
   - All commands are read-only.
@@ -95,6 +98,30 @@ cmd_tmux() {
   esac
 }
 
+cmd_workspace() {
+  local subcmd="${1:-}"
+  shift || true
+  case "$subcmd" in
+    plan)
+      exec bash "$ROOT_DIR/ops/workspaces/workspace-plan.sh" "$@"
+      ;;
+    dry-run)
+      exec bash "$ROOT_DIR/ops/workspaces/workspace-dry-run.sh" "$@"
+      ;;
+    validate)
+      exec bash "$ROOT_DIR/ops/workspaces/validate-workspaces.sh" "$@"
+      ;;
+    "")
+      echo "[harness-ops] ERROR: workspace requires a subcommand (plan, dry-run, validate)" >&2
+      exit 2
+      ;;
+    *)
+      echo "[harness-ops] ERROR: unknown workspace subcommand: $subcmd" >&2
+      exit 2
+      ;;
+  esac
+}
+
 case "${1:-help}" in
   help|--help|-h)
     cmd_help
@@ -107,6 +134,9 @@ case "${1:-help}" in
     ;;
   tmux)
     cmd_tmux "${@:2}"
+    ;;
+  workspace)
+    cmd_workspace "${@:2}"
     ;;
   "")
     cmd_help
