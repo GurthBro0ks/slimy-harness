@@ -16,6 +16,8 @@ Commands:
   notify dry-run      Preview a Discord notification without sending
   notify dedupe-check <proof_dir_or_session_id>
                       Check dedupe marker status without creating/deleting
+  schedule inventory  Read-only schedule discovery for cron/timers/units
+  schedule validate   Validate schedule inventory tooling (read-only)
 
 Safety:
   - All commands are read-only.
@@ -49,12 +51,36 @@ cmd_notify() {
   esac
 }
 
+cmd_schedule() {
+  local subcmd="${1:-}"
+  shift || true
+  case "$subcmd" in
+    inventory)
+      exec bash "$ROOT_DIR/ops/schedules/discover-schedules.sh" "$@"
+      ;;
+    validate)
+      exec bash "$ROOT_DIR/ops/schedules/validate-schedules.sh" "$@"
+      ;;
+    "")
+      echo "[harness-ops] ERROR: schedule requires a subcommand (inventory, validate)" >&2
+      exit 2
+      ;;
+    *)
+      echo "[harness-ops] ERROR: unknown schedule subcommand: $subcmd" >&2
+      exit 2
+      ;;
+  esac
+}
+
 case "${1:-help}" in
   help|--help|-h)
     cmd_help
     ;;
   notify)
     cmd_notify "${@:2}"
+    ;;
+  schedule)
+    cmd_schedule "${@:2}"
     ;;
   "")
     cmd_help
