@@ -18,6 +18,12 @@ Commands:
                       Check dedupe marker status without creating/deleting
   schedule inventory  Read-only schedule discovery for cron/timers/units
   schedule validate   Validate schedule inventory tooling (read-only)
+  schedule plan       Read-only schedule control planner
+  schedule dry-run    Read-only schedule enable/disable preview
+  schedule run-once-dry-run
+                      Read-only one-shot trigger preview
+  schedule controls-validate
+                      Validate dry-run schedule controls (read-only)
   tmux inventory      Read-only tmux session/window/pane inventory
   tmux validate       Validate tmux inventory tooling (read-only)
   workspace plan      Read-only tmux workspace planner
@@ -66,8 +72,20 @@ cmd_schedule() {
     validate)
       exec bash "$ROOT_DIR/ops/schedules/validate-schedules.sh" "$@"
       ;;
+    plan)
+      exec bash "$ROOT_DIR/ops/schedules/schedule-plan.sh" "$@"
+      ;;
+    dry-run)
+      exec bash "$ROOT_DIR/ops/schedules/schedule-dry-run.sh" "$@"
+      ;;
+    run-once-dry-run)
+      exec bash "$ROOT_DIR/ops/schedules/schedule-run-once-dry-run.sh" "$@"
+      ;;
+    controls-validate)
+      exec bash "$ROOT_DIR/ops/schedules/validate-schedule-controls.sh" "$@"
+      ;;
     "")
-      echo "[harness-ops] ERROR: schedule requires a subcommand (inventory, validate)" >&2
+      echo "[harness-ops] ERROR: schedule requires a subcommand (inventory, validate, plan, dry-run, run-once-dry-run, controls-validate)" >&2
       exit 2
       ;;
     *)

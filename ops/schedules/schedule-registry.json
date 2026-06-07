@@ -1,0 +1,200 @@
+{
+  "registry_version": "1.0.0",
+  "phase": "ops-4b-dry-run-only",
+  "defaults": {
+    "live_enable_allowed": false,
+    "live_disable_allowed": false,
+    "live_run_once_allowed": false,
+    "future_required_flags": [
+      "--confirm",
+      "--proof-dir <path>",
+      "--ticket <change-id>"
+    ]
+  },
+  "entries": [
+    {
+      "schedule_id": "harness-watchdog-cron",
+      "description": "NUC1 harness watchdog cron job",
+      "target_machine": "nuc1",
+      "owner_scope": "user",
+      "schedule_type": "user_crontab",
+      "source_path_or_unit": "watchdog.sh (user crontab)",
+      "managed_mode": "managed_candidate",
+      "risk_level": "low",
+      "approval_level": "owner",
+      "command_redaction_rules": [
+        "redact bearer tokens",
+        "redact webhook-like URLs",
+        "redact secret-looking env assignments"
+      ],
+      "backup_strategy_ref": "ops4b-cron-user-prechange-snapshot",
+      "rollback_strategy_ref": "ops4b-cron-user-restore-last-known",
+      "current_inventory_ref": "current-schedule-inventory:user_crontab */15 * * * * /home/slimy/ned-clawd/scripts/watchdog.sh",
+      "live_enable_allowed": false,
+      "live_disable_allowed": false,
+      "live_run_once_allowed": false,
+      "notes": "Dry-run only in Ops-4B. Candidate for narrow future managed scope."
+    },
+    {
+      "schedule_id": "nuc1-daily-report-timer",
+      "description": "NUC1 user timer for daily harness report",
+      "target_machine": "nuc1",
+      "owner_scope": "user",
+      "schedule_type": "user_systemd_timer",
+      "source_path_or_unit": "nuc1-daily-report.timer",
+      "managed_mode": "managed_candidate",
+      "risk_level": "medium",
+      "approval_level": "owner",
+      "command_redaction_rules": [
+        "redact bearer tokens",
+        "redact webhook-like URLs",
+        "redact secret-looking env assignments"
+      ],
+      "backup_strategy_ref": "ops4b-user-timer-unit-state-snapshot",
+      "rollback_strategy_ref": "ops4b-user-timer-reapply-previous-enabled-state",
+      "current_inventory_ref": "current-schedule-inventory:user_unit_match nuc1-daily-report.timer",
+      "live_enable_allowed": false,
+      "live_disable_allowed": false,
+      "live_run_once_allowed": false,
+      "notes": "Dry-run only in Ops-4B. No live timer mutation is allowed."
+    },
+    {
+      "schedule_id": "nuc1-kb-digest-timer",
+      "description": "NUC1 user timer for KB digest",
+      "target_machine": "nuc1",
+      "owner_scope": "user",
+      "schedule_type": "user_systemd_timer",
+      "source_path_or_unit": "nuc1-kb-digest.timer",
+      "managed_mode": "managed_candidate",
+      "risk_level": "medium",
+      "approval_level": "owner",
+      "command_redaction_rules": [
+        "redact bearer tokens",
+        "redact webhook-like URLs",
+        "redact secret-looking env assignments"
+      ],
+      "backup_strategy_ref": "ops4b-user-timer-unit-state-snapshot",
+      "rollback_strategy_ref": "ops4b-user-timer-reapply-previous-enabled-state",
+      "current_inventory_ref": "current-schedule-inventory:user_unit_match nuc1-kb-digest.timer",
+      "live_enable_allowed": false,
+      "live_disable_allowed": false,
+      "live_run_once_allowed": false,
+      "notes": "Dry-run only in Ops-4B."
+    },
+    {
+      "schedule_id": "gh-tracker-local-snapshot-timer",
+      "description": "NUC1 user timer for gh-tracker local snapshot",
+      "target_machine": "nuc1",
+      "owner_scope": "user",
+      "schedule_type": "user_systemd_timer",
+      "source_path_or_unit": "gh-tracker-local-snapshot.timer",
+      "managed_mode": "managed_candidate",
+      "risk_level": "medium",
+      "approval_level": "owner",
+      "command_redaction_rules": [
+        "redact bearer tokens",
+        "redact webhook-like URLs",
+        "redact secret-looking env assignments"
+      ],
+      "backup_strategy_ref": "ops4b-user-timer-unit-state-snapshot",
+      "rollback_strategy_ref": "ops4b-user-timer-reapply-previous-enabled-state",
+      "current_inventory_ref": "current-schedule-inventory:user_unit_match gh-tracker-local-snapshot.timer",
+      "live_enable_allowed": false,
+      "live_disable_allowed": false,
+      "live_run_once_allowed": false,
+      "notes": "Dry-run only in Ops-4B."
+    },
+    {
+      "schedule_id": "gh-tracker-github-health-sync-timer",
+      "description": "NUC1 user timer for gh-tracker GitHub health sync",
+      "target_machine": "nuc1",
+      "owner_scope": "user",
+      "schedule_type": "user_systemd_timer",
+      "source_path_or_unit": "gh-tracker-github-health-sync.timer",
+      "managed_mode": "managed_candidate",
+      "risk_level": "medium",
+      "approval_level": "owner",
+      "command_redaction_rules": [
+        "redact bearer tokens",
+        "redact webhook-like URLs",
+        "redact secret-looking env assignments"
+      ],
+      "backup_strategy_ref": "ops4b-user-timer-unit-state-snapshot",
+      "rollback_strategy_ref": "ops4b-user-timer-reapply-previous-enabled-state",
+      "current_inventory_ref": "current-schedule-inventory:user_unit_match gh-tracker-github-health-sync.timer",
+      "live_enable_allowed": false,
+      "live_disable_allowed": false,
+      "live_run_once_allowed": false,
+      "notes": "Dry-run only in Ops-4B."
+    },
+    {
+      "schedule_id": "nuc2-kb-sync-cron",
+      "description": "NUC2 user cron pull sync for KB",
+      "target_machine": "nuc2",
+      "owner_scope": "user",
+      "schedule_type": "user_crontab",
+      "source_path_or_unit": "kb-sync.sh pull (nuc2 user crontab)",
+      "managed_mode": "read_only",
+      "risk_level": "medium",
+      "approval_level": "explicit-change-window",
+      "command_redaction_rules": [
+        "redact bearer tokens",
+        "redact webhook-like URLs",
+        "redact secret-looking env assignments"
+      ],
+      "backup_strategy_ref": "ops4b-remote-read-only-no-mutation",
+      "rollback_strategy_ref": "ops4b-remote-read-only-no-mutation",
+      "current_inventory_ref": "current-schedule-inventory:nuc2 user_crontab */30 * * * * cd /home/slimy/kb && bash tools/kb-sync.sh pull",
+      "live_enable_allowed": false,
+      "live_disable_allowed": false,
+      "live_run_once_allowed": false,
+      "notes": "Remote NUC2 entry remains read_only in this pass."
+    },
+    {
+      "schedule_id": "nuc2-discord-push-cron",
+      "description": "NUC2 user cron for local discord push endpoint",
+      "target_machine": "nuc2",
+      "owner_scope": "user",
+      "schedule_type": "user_crontab",
+      "source_path_or_unit": "discord-push endpoint cron (nuc2 user crontab)",
+      "managed_mode": "read_only",
+      "risk_level": "high",
+      "approval_level": "explicit-change-window",
+      "command_redaction_rules": [
+        "redact bearer tokens",
+        "redact webhook-like URLs",
+        "redact secret-looking env assignments"
+      ],
+      "backup_strategy_ref": "ops4b-remote-read-only-no-mutation",
+      "rollback_strategy_ref": "ops4b-remote-read-only-no-mutation",
+      "current_inventory_ref": "current-schedule-inventory:nuc2 user_crontab */5 * * * * curl -X POST localhost discord-push endpoint",
+      "live_enable_allowed": false,
+      "live_disable_allowed": false,
+      "live_run_once_allowed": false,
+      "notes": "High-risk and remote. Must remain read_only."
+    },
+    {
+      "schedule_id": "mc-restart-system-timer",
+      "description": "System-level mission-control restart timer on NUC1",
+      "target_machine": "nuc1",
+      "owner_scope": "system",
+      "schedule_type": "system_systemd_timer",
+      "source_path_or_unit": "mission-control restart timer (system scope)",
+      "managed_mode": "read_only",
+      "risk_level": "high",
+      "approval_level": "explicit-change-window",
+      "command_redaction_rules": [
+        "redact bearer tokens",
+        "redact webhook-like URLs",
+        "redact secret-looking env assignments"
+      ],
+      "backup_strategy_ref": "ops4b-system-read-only-no-mutation",
+      "rollback_strategy_ref": "ops4b-system-read-only-no-mutation",
+      "current_inventory_ref": "current-schedule-inventory:system_systemd_timer (system scope reference)",
+      "live_enable_allowed": false,
+      "live_disable_allowed": false,
+      "live_run_once_allowed": false,
+      "notes": "Root/system and high-risk target remains read_only."
+    }
+  ]
+}

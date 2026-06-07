@@ -1,12 +1,15 @@
-# Schedule Inventory
+# Schedule Inventory and Dry-Run Controls
 
-This directory adds the Ops-3 read-only schedule inventory layer for the
-Slimy Harness Ops Manager.
+This directory contains:
+
+- Ops-3 read-only schedule inventory tooling
+- Ops-4B read-only, registry-backed schedule control planning and dry-run tooling
 
 ## Purpose
 
 Inventory cron sources, systemd timers, keyword-matched units, and optional
-read-only NUC2 schedule surfaces without changing any schedule state.
+read-only NUC2 schedule surfaces, plus provide plan/dry-run previews for
+future schedule controls without changing schedule state.
 
 This pass does not:
 
@@ -27,6 +30,18 @@ This pass does not:
 - `validate-schedules.sh`
   - validates syntax, command availability, and mutation-scan safety for the
     Ops-3 schedule inventory layer
+- `schedule-registry.json`
+  - allowlisted schedule control targets for Ops-4B dry-run planning
+  - includes managed mode, risk, approval level, and live flags (all false)
+- `schedule-plan.sh`
+  - read-only schedule planner for one `schedule_id`
+- `schedule-dry-run.sh`
+  - read-only future enable/disable preview as `WOULD_RUN` text only
+- `schedule-run-once-dry-run.sh`
+  - read-only future one-shot trigger preview as `WOULD_RUN` text only
+- `validate-schedule-controls.sh`
+  - validates registry, script safety, redaction markers, and dry-run-only
+    contract for Ops-4B controls
 
 ## CLI
 
@@ -34,9 +49,13 @@ This pass does not:
 ops/harness-ops help
 ops/harness-ops schedule inventory
 ops/harness-ops schedule validate
+ops/harness-ops schedule plan <schedule_id>
+ops/harness-ops schedule dry-run <schedule_id> --action enable|disable
+ops/harness-ops schedule run-once-dry-run <schedule_id>
+ops/harness-ops schedule controls-validate
 ```
 
-Both schedule commands are read-only.
+All schedule commands in Ops-3/Ops-4B are read-only.
 
 ## Output Contract
 
@@ -58,6 +77,7 @@ The inventory aims to report, where available:
 
 ```bash
 bash ops/schedules/validate-schedules.sh
+bash ops/schedules/validate-schedule-controls.sh
 ```
 
 ## Safety Notes
@@ -67,3 +87,6 @@ bash ops/schedules/validate-schedules.sh
 - NUC2 inspection is optional and is not required for PASS.
 - Redaction covers webhook URLs, bearer values, embedded credentials, and
   secret-looking env assignments.
+- Ops-4B does not implement live enable/disable/run-once.
+- Any future mutation flow must remain gated behind plan + dry-run + validate +
+  explicit flags and proof-dir capture.
