@@ -1,0 +1,24 @@
+{
+  "feature_id": "test-feature-001",
+  "session_id": "2026-06-09T00:00:01Z",
+  "agent": "opencode",
+  "nuc": "nuc1",
+  "project": "test-repo",
+  "prompt_type": "A",
+  "status": "completed",
+  "summary": "Synthetic test fail: 3 of 10 tests failed on assertion.",
+  "changes": [
+    "test-repo/src/test-feature-001.py"
+  ],
+  "tests": {
+    "ran": true,
+    "passed": false,
+    "count": 10,
+    "failed_count": 3
+  },
+  "blockers": [],
+  "recommendation": {
+    "next_feature_id": null,
+    "reasoning": "Synthetic fail fixture for goal-runner tests."
+  }
+}

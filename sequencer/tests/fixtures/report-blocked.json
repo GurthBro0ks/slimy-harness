@@ -1,0 +1,26 @@
+{
+  "feature_id": "test-feature-001",
+  "session_id": "2026-06-09T00:00:02Z",
+  "agent": "opencode",
+  "nuc": "nuc1",
+  "project": "test-repo",
+  "prompt_type": "A",
+  "status": "blocked",
+  "summary": "Synthetic test blocked: agent could not reproduce required environment.",
+  "changes": [],
+  "tests": {
+    "ran": false,
+    "passed": false
+  },
+  "blockers": [
+    {
+      "type": "manual",
+      "description": "Synthetic blocker: needs operator to confirm pre-existing test harness setup.",
+      "blocks_feature": "test-feature-001"
+    }
+  ],
+  "recommendation": {
+    "next_feature_id": null,
+    "reasoning": "Synthetic blocked fixture for goal-runner tests."
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SlimyAI Goal State",
+  "description": "Schema for sequencer/goal.json written by goal_runner.py.",
+  "type": "object",
+  "required": [
+    "feature_id",
+    "status",
+    "started",
+    "current_attempt",
+    "max_attempts",
+    "wall_clock_limit_minutes",
+    "attempts"
+  ],
+  "properties": {
+    "feature_id": {
+      "type": "string",
+      "description": "Feature ID from feature_list.json."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["running", "passed", "failed", "stuck", "escalated", "blocked"],
+      "description": "Current goal status."
+    },
+    "started": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when the goal began."
+    },
+    "ended": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when the goal reached a terminal state."
+    },
+    "current_attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The attempt number in progress or just completed."
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum allowed attempts before escalation."
+    },
+    "wall_clock_limit_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Per-attempt wall-clock timeout in minutes."
+    },
+    "project": {
+      "type": "string",
+      "description": "Project name from feature_list.json."
+    },
+    "project_path": {
+      "type": "string",
+      "description": "Filesystem path to the project repo."
+    },
+    "truth_gate_status": {
+      "type": "string",
+      "enum": ["discovered", "missing"],
+      "description": "Whether truth gate commands were discovered on the feature."
+    },
+    "truth_gate_commands": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of truth gate commands discovered."
+    },
+    "attempts": {
+      "type": "array",
+      "description": "Per-attempt summary records.",
+      "items": {
+        "type": "object",
+        "required": ["number", "verdict", "stuck_signals"],
+        "properties": {
+          "number": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "started": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "ended": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["pass", "fail", "unknown"]
+          },
+          "stuck_signals": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "escalation_reason": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    }
+  }
+}

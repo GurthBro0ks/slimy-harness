@@ -1,0 +1,54 @@
+{
+  "_meta": {
+    "scope": "synthetic-test-fixtures",
+    "description": "Synthetic feature list for goal-runner Phase 1 tests. NOT a real feature list. All IDs are test-feature-NNN."
+  },
+  "features": [
+    {
+      "id": "test-feature-001",
+      "project": "test-repo",
+      "category": "test",
+      "description": "Synthetic test feature 001: a feature with two truth-gate steps.",
+      "steps": [
+        "echo synthetic-step-1",
+        "echo synthetic-step-2"
+      ],
+      "passes": false,
+      "accepted": false,
+      "status": "open",
+      "priority": "medium",
+      "risk": "low",
+      "path": "/tmp/synthetic/test-repo",
+      "remote": null,
+      "blocked_by": []
+    },
+    {
+      "id": "test-feature-002",
+      "project": "test-repo",
+      "category": "test",
+      "description": "Synthetic test feature 002: already completed.",
+      "steps": ["echo synthetic-done"],
+      "passes": true,
+      "accepted": true,
+      "status": "completed",
+      "priority": "low",
+      "risk": "low",
+      "path": "/tmp/synthetic/test-repo",
+      "blocked_by": []
+    },
+    {
+      "id": "test-feature-003",
+      "project": "test-repo",
+      "category": "test",
+      "description": "Synthetic test feature 003: blocked by a dependency.",
+      "steps": ["echo synthetic-blocked"],
+      "passes": false,
+      "accepted": false,
+      "status": "open",
+      "priority": "low",
+      "risk": "low",
+      "path": "/tmp/synthetic/test-repo",
+      "blocked_by": ["test-feature-001"]
+    }
+  ]
+}
