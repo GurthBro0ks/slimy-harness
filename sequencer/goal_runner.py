@@ -378,6 +378,33 @@ def _resume_state(goal_dir, current_attempt):
 # Phase 2: worktree + tmux dispatch helpers
 # ---------------------------------------------------------------------------
 
+def _resolve_project_path(feature):
+    """Resolve the actual repo path for a feature dict.
+
+    Precedence (highest first):
+      1. feature["project_path"] if present and non-empty
+      2. feature["repo_path"]    if present and non-empty
+      3. feature["path"]         if present and non-empty
+      4. fallback "/opt/slimy/<feature.project>" (display-name derived)
+         — ONLY used when no explicit path field is set. This fallback is
+           never used to OVERRIDE an explicit path field.
+
+    Returns (project_path, source) where source is one of:
+      "project_path" | "repo_path" | "path" | "project_fallback"
+
+    feature["project"] is treated as a display/name only and is never used
+    as the primary path. This fixes a path-resolution bug where a feature
+    with project="foo" and project_path="/somewhere/else" would resolve
+    to /opt/slimy/foo instead of /somewhere/else.
+    """
+    for key in ("project_path", "repo_path", "path"):
+        v = feature.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip(), key
+    project_name = feature.get("project", "unknown")
+    return f"/opt/slimy/{project_name}", "project_fallback"
+
+
 def _is_clean_git_repo(project_dir):
     """Return (ok, reason). ok=True only if project_dir is a clean git repo."""
     p = Path(project_dir)
@@ -656,7 +683,9 @@ def main(argv=None):
         return 2
 
     project = feature.get("project", "unknown")
-    project_path = feature.get("path") or f"/opt/slimy/{project}"
+    project_path, project_path_source = _resolve_project_path(feature)
+    log.info("resolved project path for %s: %s (source=%s)",
+             args.feature_id, project_path, project_path_source)
     truth_gates = _discover_truth_gate_commands(feature)
     truth_gate_status = "discovered" if truth_gates else "missing"
     if truth_gate_status == "missing":
@@ -689,6 +718,7 @@ def main(argv=None):
             "wall_clock_limit_minutes": args.wall_clock_minutes,
             "project": project,
             "project_path": project_path,
+            "project_path_source": project_path_source,
             "truth_gate_status": truth_gate_status,
             "truth_gate_commands": truth_gates,
             "live_dispatch": live_dispatch,
