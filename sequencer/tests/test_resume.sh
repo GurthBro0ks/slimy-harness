@@ -42,6 +42,15 @@ if [ ! -f "$PROMPT" ]; then fail "prompt.md missing after first run"; fi
 MD5_1=$(md5sum "$PROMPT" | awk '{print $1}')
 pass "first prompt md5=$MD5_1"
 
+# Assert prompt.md STARTS with exact 3-line harness context block
+if head -3 "$PROMPT" | sed -n '1p' | grep -qx "cat /home/slimy/AGENTS.md" \
+   && head -3 "$PROMPT" | sed -n '2p' | grep -qx "cat /home/slimy/claude-progress.md" \
+   && head -3 "$PROMPT" | sed -n '3p' | grep -qx "source /home/slimy/init.sh"; then
+  pass "prompt.md starts with exact 3-line harness context block"
+else
+  fail "prompt.md does NOT start with exact 3-line block (got: $(head -3 "$PROMPT" | tr '\n' '|'))"
+fi
+
 # 2. Second run, no report
 echo
 echo "--- step 2: second invocation (no report) ---"

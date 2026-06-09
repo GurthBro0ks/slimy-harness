@@ -58,13 +58,15 @@ else
   fail "events.jsonl missing"
 fi
 
-# 5. attempt-1/prompt.md exists and contains startup block
+# 5. attempt-1/prompt.md exists and STARTS WITH exact 3-line startup block
 PROMPT="$TEMP/test-feature-001/attempt-1/prompt.md"
 if [ -f "$PROMPT" ]; then
-  if grep -q "cat /home/slimy/AGENTS.md" "$PROMPT"; then
-    pass "prompt.md contains startup block"
+  if head -3 "$PROMPT" | sed -n '1p' | grep -qx "cat /home/slimy/AGENTS.md" \
+     && head -3 "$PROMPT" | sed -n '2p' | grep -qx "cat /home/slimy/claude-progress.md" \
+     && head -3 "$PROMPT" | sed -n '3p' | grep -qx "source /home/slimy/init.sh"; then
+    pass "prompt.md starts with exact 3-line harness context block"
   else
-    fail "prompt.md missing startup block"
+    fail "prompt.md does NOT start with exact 3-line block (first 3 lines: $(head -3 "$PROMPT" | tr '\n' '|'))"
   fi
 else
   fail "prompt.md missing"

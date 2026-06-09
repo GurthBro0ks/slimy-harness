@@ -136,7 +136,9 @@ def build_attempt_prompt(feature, attempt_num, fix_packet, max_attempts):
     )
 
     prompt_parts = [
-        f"You are an autonomous agent dispatched by the SlimyAI goal-runner.",
+        "cat /home/slimy/AGENTS.md",
+        "cat /home/slimy/claude-progress.md",
+        "source /home/slimy/init.sh",
         "",
         "MANDATORY STARTUP (do all before writing any code):",
         "1. cat /home/slimy/AGENTS.md",
@@ -144,6 +146,8 @@ def build_attempt_prompt(feature, attempt_num, fix_packet, max_attempts):
         "3. cat /home/slimy/feature_list.json",
         "4. cat /home/slimy/server-state.md",
         "5. source /home/slimy/init.sh",
+        "",
+        f"You are an autonomous agent dispatched by the SlimyAI goal-runner.",
         "",
         f"YOUR TASK: Fix feature {feature_id} in project {project}.",
         "",
