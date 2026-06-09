@@ -41,6 +41,61 @@ log() { echo "[$(date -Iseconds)] [auto-sequence] $*" >&2; }
 err() { echo "[$(date -Iseconds)] [auto-sequence] ERROR: $*" >> "$ERROR_LOG"; }
 loop_log() { echo "[$(date -Iseconds)] [loop] $*" >> "${LOOP_LOG_DIR}/loop-$(date +%Y%m%d).log"; }
 
+run_goal_runner_dispatch() {
+  local _feature_id="$1"
+  local _project="$2"
+  local _risk="$3"
+
+  local _goal_runner="$SEQUNCER_DIR/goal_runner.py"
+
+  if [ ! -f "$_goal_runner" ]; then
+    err "goal_runner.py not found at $_goal_runner"
+    return 1
+  fi
+
+  local _max_attempts="${HARNESS_GOAL_RUNNER_MAX_ATTEMPTS:-1}"
+
+  if [ "$_max_attempts" -gt 1 ] && [ "${HARNESS_GOAL_RUNNER_ALLOW_RETRY:-}" != "1" ]; then
+    err "HARNESS_GOAL_RUNNER_MAX_ATTEMPTS=$_max_attempts but HARNESS_GOAL_RUNNER_ALLOW_RETRY is not 1. Failing closed."
+    return 1
+  fi
+
+  local _notify_mode="${HARNESS_GOAL_RUNNER_NOTIFY_MODE:-disabled}"
+
+  if [ "$_notify_mode" = "runtime" ]; then
+    log "WARN: HARNESS_GOAL_RUNNER_NOTIFY_MODE=runtime not allowed in Phase 4. Downgrading to disabled."
+    _notify_mode="disabled"
+  fi
+
+  local _worktree_root="${HARNESS_GOAL_RUNNER_WORKTREE_ROOT:-/tmp/slimy-goals}"
+  local _goals_dir="${HARNESS_GOAL_RUNNER_GOALS_DIR:-/home/slimy/harness-logs/goals}"
+
+  local _cmd=(
+    python3 "$_goal_runner"
+    "$_feature_id"
+    --max-attempts "$_max_attempts"
+    --feature-list "$FEATURE_LIST"
+    --goals-dir "$_goals_dir"
+    --worktree-root "$_worktree_root"
+    --notify-mode "$_notify_mode"
+  )
+
+  if [ "${HARNESS_GOAL_RUNNER_LIVE_DISPATCH:-}" = "1" ]; then
+    _cmd+=(--live-dispatch)
+    log "goal-runner dispatch: mode=live-dispatch feature=$_feature_id project=$_project risk=$_risk max_attempts=$_max_attempts notify=$_notify_mode"
+  else
+    _cmd+=(--dry-run)
+    log "goal-runner dispatch: mode=dry-run feature=$_feature_id project=$_project risk=$_risk max_attempts=$_max_attempts notify=$_notify_mode"
+  fi
+
+  if [ "${HARNESS_GOAL_RUNNER_ALLOW_RETRY:-}" = "1" ]; then
+    export GOAL_RUNNER_ALLOW_RETRY=1
+  fi
+
+  "${_cmd[@]}"
+  return $?
+}
+
 run_dispatch() {
   DISPATCH_RESULT=""
 
@@ -390,6 +445,57 @@ with open('$PENDING_APPROVAL', 'w') as f:
   fi
   log "Waiting for human approval. Exiting."
   DISPATCH_RESULT="approval"
+  return 0
+fi
+
+if [ "${HARNESS_USE_GOAL_RUNNER:-}" = "1" ]; then
+  log "Goal-runner path activated for $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT [risk=$DISPATCH_RISK]"
+  run_goal_runner_dispatch "$DISPATCH_FEATURE_ID" "$DISPATCH_PROJECT" "$DISPATCH_RISK"
+  GR_EXIT=$?
+  case "$GR_EXIT" in
+    0)  log "goal-runner: goal passed for $DISPATCH_FEATURE_ID" ;;
+    2)  log "goal-runner: goal escalated for $DISPATCH_FEATURE_ID" ;;
+    *)  log "goal-runner: error (exit=$GR_EXIT) for $DISPATCH_FEATURE_ID" ;;
+  esac
+
+  NEW_SESSIONS=$((STATE_SESSIONS + 1))
+  python3 -c "
+import json, datetime
+state = {
+    'date': '$TODAY',
+    'sessions_today': $NEW_SESSIONS,
+    'last_dispatch': datetime.datetime.now().isoformat(),
+    'last_feature': '$DISPATCH_FEATURE_ID'
+}
+with open('$STATE_FILE', 'w') as f:
+    json.dump(state, f, indent=2)
+"
+
+  DISPATCH_WEBHOOK_URL="${DISCORD_HARNESS_WEBHOOK_URL:-}"
+  DISPATCH_REPORT_FILE=$(ls -t "$KB_SESSIONS_DIR"/report-*.json 2>/dev/null | head -1)
+  DISPATCH_REPORT_LINK=""
+  if [ -n "$DISPATCH_REPORT_FILE" ]; then
+    DISPATCH_REPORT_LINK="$HARNESS_REPORT_BASE_URL/reports/sessions/$(basename "$DISPATCH_REPORT_FILE")"
+  fi
+  DISPATCH_MSG="Goal-runner: $DISPATCH_FEATURE_ID in $DISPATCH_PROJECT [$DISPATCH_RISK] (exit=$GR_EXIT)"
+  if [ -n "$DISPATCH_REPORT_LINK" ]; then
+    DISPATCH_MSG="$DISPATCH_MSG
+Report: $DISPATCH_REPORT_LINK"
+  else
+    DISPATCH_MSG="$DISPATCH_MSG
+Reports: $HARNESS_REPORT_BASE_URL/reports"
+  fi
+  curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
+    -d "{\"content\":\"$DISPATCH_MSG\"}" "$DISPATCH_WEBHOOK_URL" 2>/dev/null || true
+
+  bash "$SEQUNCER_DIR/notify-blockers.sh" 2>&1 || true
+
+  log "Done. Session $NEW_SESSIONS/$MAX_SESSIONS today."
+  case "$GR_EXIT" in
+    0)  DISPATCH_RESULT="goal_runner:passed"  ;;
+    2)  DISPATCH_RESULT="goal_runner:escalated" ;;
+    *)  DISPATCH_RESULT="goal_runner:error" ;;
+  esac
   return 0
 fi
 
