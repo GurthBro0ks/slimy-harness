@@ -21,8 +21,11 @@ import hashlib
 import json
 import logging
 import os
+import shlex
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -354,6 +357,14 @@ def _resume_state(goal_dir, current_attempt):
     evt = last.get("event")
     if evt == "awaiting_report":
         return "COLLECT"
+    if evt in ("dispatch_finished", "dispatched"):
+        # If session report already exists, jump straight to COLLECT.
+        # Otherwise we're mid-dispatch (agent still running) — treat as fresh
+        # BUILD (the live-dispatch branch will see tmux has-session and handle).
+        report_path = Path(goal_dir) / f"attempt-{current_attempt}" / "session-report.json"
+        if report_path.is_file():
+            return "COLLECT"
+        return None
     if evt in ("goal_started", "attempt_started"):
         # Check if the prompt for this attempt already exists
         prompt_path = Path(goal_dir) / f"attempt-{current_attempt}" / "prompt.md"
@@ -361,6 +372,159 @@ def _resume_state(goal_dir, current_attempt):
             return "COLLECT"
         return "BUILD"
     return None
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: worktree + tmux dispatch helpers
+# ---------------------------------------------------------------------------
+
+def _is_clean_git_repo(project_dir):
+    """Return (ok, reason). ok=True only if project_dir is a clean git repo."""
+    p = Path(project_dir)
+    if not p.is_dir():
+        return False, f"project dir does not exist: {project_dir}"
+    if not (p / ".git").exists():
+        return False, f"project dir is not a git repo: {project_dir}"
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(p), "status", "--porcelain"],
+            capture_output=True, text=True, check=True, timeout=10
+        )
+        if out.stdout.strip():
+            return False, f"project dir has uncommitted changes:\n{out.stdout.strip()}"
+    except Exception as e:
+        return False, f"git status failed: {e}"
+    return True, "clean"
+
+
+def _create_worktree(project_dir, worktree_path):
+    """Create a git worktree at worktree_path from project_dir's HEAD.
+
+    Returns (ok, message). Refuses if worktree_path already exists.
+    Does NOT touch the main project_dir. Never uses git reset/clean/stash.
+    """
+    p = Path(project_dir)
+    w = Path(worktree_path)
+    if w.exists():
+        return False, f"worktree path already exists: {w}"
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(p), "worktree", "add", str(w), "HEAD"],
+            capture_output=True, text=True, check=True, timeout=60
+        )
+        return True, out.stdout.strip() or "ok"
+    except subprocess.CalledProcessError as e:
+        return False, f"git worktree add failed (rc={e.returncode}): {e.stderr.strip()}"
+    except Exception as e:
+        return False, f"worktree add exception: {e}"
+
+
+def _is_registered_worktree(project_dir, worktree_path):
+    """Return True if worktree_path is already a registered worktree of project_dir."""
+    p = Path(project_dir)
+    w = Path(worktree_path)
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(p), "worktree", "list", "--porcelain"],
+            capture_output=True, text=True, check=True, timeout=10
+        )
+        wt_abs = str(w.resolve())
+        for line in out.stdout.splitlines():
+            if line.startswith("worktree "):
+                if Path(line.split(" ", 1)[1].strip()).resolve() == Path(wt_abs):
+                    return True
+        return False
+    except Exception:
+        return False
+
+
+def _build_live_prompt_preamble(attempt_dir, project_dir, feature_id):
+    """Add the Phase 2 controlled-live preamble AFTER the standard
+    startup block. Keeps the 3-line harness context block as the
+    absolute first content of the prompt.
+    """
+    report_path = attempt_dir / "session-report.json"
+    return [
+        f"## PHASE 2 CONTROLLED LIVE SINGLE-ATTEMPT",
+        f"- This is a controlled live single-attempt test of the goal-runner.",
+        f"- Feature: {feature_id}",
+        f"- Project repo: {project_dir}",
+        f"- DO NOT push to any remote.",
+        f"- DO NOT restart any production service (PM2, systemd, tmux, cron).",
+        f"- DO NOT modify Caddy, DNS, cron, systemd timers.",
+        f"- DO NOT send any real Discord message.",
+        f"- DO NOT read, print, or modify any .env file or webhook secret.",
+        f"- DO NOT use git reset --hard, git clean, or git stash.",
+        f"- Write your session report to: {report_path}",
+        f"  (NOT /home/slimy/session-report.json — that path is legacy fallback only.)",
+        f"- If the truth gate commands below fail, do not retry endlessly.",
+        f"  Make minimal progress and write status: 'completed' / 'partial' / 'failed' / 'blocked'.",
+        "",
+    ]
+
+
+def _launch_tmux_session(session_name, worktree_path, agent_cmd, prompt_path, log_path):
+    """Spawn the agent in a tmux session, return (ok, message)."""
+    if subprocess.run(["tmux", "has-session", "-t", session_name],
+                       capture_output=True).returncode == 0:
+        return False, f"tmux session already exists: {session_name}"
+    agent_invocation = (
+        f"{agent_cmd} run --dir {shlex.quote(str(worktree_path))} "
+        f"--dangerously-skip-permissions \"$(cat {shlex.quote(str(prompt_path))})\" "
+        f"2>&1 | tee {shlex.quote(str(log_path))}; "
+        f"echo DISPATCH_FINISHED exit=$? >> {shlex.quote(str(log_path))}"
+    )
+    try:
+        proc = subprocess.run(
+            ["tmux", "new-session", "-d", "-s", session_name, "-c", str(worktree_path),
+             agent_invocation],
+            capture_output=True, text=True, timeout=30
+        )
+        if proc.returncode != 0:
+            return False, f"tmux new-session failed: {proc.stderr.strip()}"
+        return True, session_name
+    except Exception as e:
+        return False, f"tmux launch exception: {e}"
+
+
+def _poll_tmux_done(session_name, timeout_minutes, poll_interval_seconds):
+    """Block until tmux session ends or timeout. Return (done, reason)."""
+    deadline = time.time() + (timeout_minutes * 60)
+    while time.time() < deadline:
+        if subprocess.run(["tmux", "has-session", "-t", session_name],
+                          capture_output=True).returncode != 0:
+            return True, "session_ended"
+        time.sleep(poll_interval_seconds)
+    return False, "timeout"
+
+
+def _kill_tmux_session(session_name):
+    """Kill only the named tmux session. Refuses to kill others."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", session_name],
+                       capture_output=True, text=True, timeout=10)
+    except Exception as e:
+        log.warning("kill tmux %s: %s", session_name, e)
+
+
+def _collect_session_report(attempt_dir):
+    """Look for attempt-local session-report.json. If missing, copy from
+    /home/slimy/session-report.json (legacy fallback).
+
+    Returns (report_path, fallback_used, ok).
+    """
+    local = attempt_dir / "session-report.json"
+    if local.is_file():
+        return local, False, True
+    legacy = Path("/home/slimy/session-report.json")
+    if legacy.is_file():
+        try:
+            attempt_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(legacy, local)
+            return local, True, True
+        except Exception as e:
+            return None, False, False
+    return None, False, False
 
 
 def _run_qa_gate(feature_id, attempt_dir, feature_list_path, dry_run=True):
@@ -421,21 +585,50 @@ def _build_fix_packet(feature_id, attempt, goal_dir, feature_list_path):
 
 def main(argv=None):
     _configure_logging()
-    parser = argparse.ArgumentParser(description="SlimyAI goal-runner (Phase 1: dry-run)")
+    parser = argparse.ArgumentParser(
+        description="SlimyAI goal-runner (Phase 1 dry-run; Phase 2 controlled live single-attempt)"
+    )
     parser.add_argument("feature_id", help="Feature ID from feature_list.json")
     parser.add_argument("--max-attempts", type=int, default=3)
     parser.add_argument("--wall-clock-minutes", type=int, default=90)
     parser.add_argument("--dry-run", action="store_true",
                         help="Phase 1 mode: write prompt, do not dispatch a real agent.")
+    parser.add_argument("--live-dispatch", action="store_true",
+                        help="Phase 2 mode: create an isolated git worktree, dispatch a real "
+                             "agent via tmux, wait for completion. Refused unless combined with "
+                             "appropriate env gates (see Phase 2 safety).")
     parser.add_argument("--notify-mode", default="dry-run",
                         choices=("dry-run", "runtime", "disabled"))
     parser.add_argument("--goals-dir", default="/home/slimy/harness-logs/goals")
     parser.add_argument("--feature-list", default="/home/slimy/feature_list.json")
+    parser.add_argument("--worktree-root", default="/tmp/slimy-goals",
+                        help="Parent dir for per-attempt git worktrees.")
+    parser.add_argument("--agent-cmd", default="opencode",
+                        help="Agent CLI to invoke inside the tmux session.")
+    parser.add_argument("--tmux-prefix", default="goal",
+                        help="Prefix for tmux session name (suffix: <feature>-attempt-N).")
+    parser.add_argument("--poll-interval-seconds", type=int, default=30,
+                        help="Seconds between tmux has-session polls.")
     args = parser.parse_args(argv)
 
-    if not args.dry_run:
-        log.error("Phase 1 contract: --dry-run is REQUIRED. Refusing to run in real mode.")
+    # ---- MODE GATING (Phase 2 safety) ----
+    if args.dry_run and args.live_dispatch:
+        log.error("conflicting flags: --dry-run and --live-dispatch are mutually exclusive")
         return 2
+    if not args.dry_run and not args.live_dispatch:
+        log.error("Refusing to run: must specify either --dry-run or --live-dispatch")
+        return 2
+
+    # Phase 2 hard gates (can only be relaxed with explicit env override)
+    if args.live_dispatch:
+        if args.max_attempts > 1 and os.environ.get("GOAL_RUNNER_ALLOW_RETRY") != "1":
+            log.error("Phase 2 gate: max_attempts>1 requires GOAL_RUNNER_ALLOW_RETRY=1")
+            return 2
+        if args.notify_mode == "runtime" and os.environ.get("GOAL_RUNNER_ALLOW_RUNTIME_NOTIFY") != "1":
+            log.error("Phase 2 gate: notify-mode=runtime requires GOAL_RUNNER_ALLOW_RUNTIME_NOTIFY=1")
+            return 2
+        if args.notify_mode == "runtime":
+            log.warning("Phase 2: --notify-mode=runtime ACTIVE. Discord will be invoked.")
 
     # ---- INIT ----
     try:
@@ -468,6 +661,12 @@ def main(argv=None):
     goal_path = goal_dir / "goal.json"
     events_path = goal_dir / "events.jsonl"
 
+    live_dispatch = bool(args.live_dispatch)
+    worktree_root = Path(args.worktree_root)
+    if live_dispatch:
+        worktree_root.mkdir(parents=True, exist_ok=True)
+        log.info("live-dispatch: worktree_root=%s", worktree_root)
+
     fresh = not goal_path.is_file()
     if fresh:
         goal_state = {
@@ -481,11 +680,15 @@ def main(argv=None):
             "project_path": project_path,
             "truth_gate_status": truth_gate_status,
             "truth_gate_commands": truth_gates,
+            "live_dispatch": live_dispatch,
+            "worktree_root": str(worktree_root) if live_dispatch else None,
+            "agent_cmd": args.agent_cmd if live_dispatch else None,
             "attempts": [],
         }
         _write_json(goal_path, goal_state)
         _append_event(goal_dir, {"event": "goal_started", "ts": _now_iso(),
-                                 "feature_id": args.feature_id})
+                                 "feature_id": args.feature_id,
+                                 "live_dispatch": live_dispatch})
         log.info("created goal dir: %s", goal_dir)
 
     # ---- RESUME CHECK ----
@@ -496,16 +699,58 @@ def main(argv=None):
         log.info("resuming: state=%s attempt=%d", resume, current_attempt)
 
     # ---- ATTEMPT LOOP ----
+    attempt_worktree_path = None
+    tmux_session_name = None
     while current_attempt <= args.max_attempts:
         attempt_dir = goal_dir / f"attempt-{current_attempt}"
         attempt_dir.mkdir(parents=True, exist_ok=True)
 
         # CHECKPOINT
         if not resume or resume == "BUILD":
-            _append_event(goal_dir, {"event": "checkpoint", "ts": _now_iso(),
-                                     "attempt": current_attempt, "base_sha": base_sha,
-                                     "would_worktree": f"/tmp/slimy-goals/{args.feature_id}/attempt-{current_attempt}/worktree"})
-            log.info("CHECKPOINT attempt=%d base_sha=%s (worktree would be created in real mode)", current_attempt, base_sha)
+            event = {
+                "event": "checkpoint", "ts": _now_iso(),
+                "attempt": current_attempt, "base_sha": base_sha,
+                "would_worktree": f"{worktree_root}/{args.feature_id}/attempt-{current_attempt}/worktree",
+                "live_dispatch": live_dispatch,
+            }
+            if live_dispatch:
+                # Validate project is clean
+                ok, why = _is_clean_git_repo(project_path)
+                if not ok:
+                    log.error("CHECKPOINT: project repo is not clean: %s", why)
+                    _append_event(goal_dir, dict(event, error="dirty_repo", reason=why))
+                    return 2
+                worktree_path = worktree_root / args.feature_id / f"attempt-{current_attempt}" / "worktree"
+                if worktree_path.exists() and not any(worktree_path.iterdir()):
+                    worktree_path.rmdir()
+                # If worktree_path is a registered worktree of project_dir
+                # (e.g. resume scenario), treat it as ours — record it and skip create.
+                if worktree_path.exists() and _is_registered_worktree(project_path, worktree_path):
+                    attempt_worktree_path = str(worktree_path)
+                    event["worktree_path"] = attempt_worktree_path
+                    event["worktree_created"] = False
+                    event["worktree_reused"] = True
+                    log.info("CHECKPOINT attempt=%d reusing existing worktree at %s",
+                             current_attempt, attempt_worktree_path)
+                else:
+                    ok, why = _create_worktree(project_path, worktree_path)
+                    if not ok:
+                        log.error("CHECKPOINT: worktree create failed: %s", why)
+                        _append_event(goal_dir, dict(event, error="worktree_create_failed", reason=why))
+                        return 2
+                    attempt_worktree_path = str(worktree_path)
+                    event["worktree_path"] = attempt_worktree_path
+                    event["worktree_created"] = True
+                attempt_worktree_path = str(worktree_path)
+                event["worktree_path"] = attempt_worktree_path
+                event["worktree_created"] = True
+                # Persist worktree path in goal.json
+                gs = _read_json(goal_path)
+                gs.setdefault("attempt_worktrees", {})[str(current_attempt)] = attempt_worktree_path
+                _write_json(goal_path, gs)
+                log.info("CHECKPOINT attempt=%d created worktree at %s", current_attempt, attempt_worktree_path)
+            _append_event(goal_dir, event)
+            log.info("CHECKPOINT attempt=%d base_sha=%s", current_attempt, base_sha)
             resume = None
 
         # BUILD
@@ -515,6 +760,25 @@ def main(argv=None):
                 fix_packet = _build_fix_packet(args.feature_id, current_attempt - 1,
                                                goal_dir, args.feature_list)
             prompt = build_attempt_prompt(feature, current_attempt, fix_packet, args.max_attempts)
+            # Phase 2: inject the controlled-live preamble AFTER the standard
+            # startup block but BEFORE the rest of the prompt. We rebuild the
+            # prompt to keep the 3-line harness context block as the absolute
+            # first content.
+            if live_dispatch:
+                base_lines = prompt.splitlines()
+                # Find the index of the first blank line after the 3-line block
+                # (the standard structure is: 3 lines, blank, MANDATORY STARTUP, ...).
+                insert_at = 0
+                if len(base_lines) >= 3 and base_lines[0].startswith("cat /home/slimy/AGENTS.md"):
+                    insert_at = 3
+                    # skip the blank line if present at index 3
+                    if len(base_lines) > insert_at and base_lines[insert_at].strip() == "":
+                        insert_at += 1
+                preamble = _build_live_prompt_preamble(
+                    attempt_dir, attempt_worktree_path or project_path, args.feature_id
+                )
+                new_lines = base_lines[:insert_at] + [""] + preamble + base_lines[insert_at:]
+                prompt = "\n".join(new_lines)
             prompt_path = attempt_dir / "prompt.md"
             if not _file_unchanged(prompt_path, prompt):
                 prompt_path.write_text(prompt)
@@ -525,26 +789,95 @@ def main(argv=None):
                 log.info("prompt unchanged; left in place at %s", prompt_path)
             _append_event(goal_dir, {"event": "attempt_started", "ts": _now_iso(),
                                      "attempt": current_attempt})
-            log.info("DISPATCH_SKIPPED: dry-run mode (no tmux launch)")
+
+            if live_dispatch:
+                tmux_session_name = f"{args.tmux_prefix}-{args.feature_id}-attempt-{current_attempt}"
+                log_path = attempt_dir / "dispatch.log"
+                ok, why = _launch_tmux_session(
+                    tmux_session_name,
+                    attempt_worktree_path or project_path,
+                    args.agent_cmd,
+                    prompt_path,
+                    log_path,
+                )
+                if not ok:
+                    log.error("DISPATCH: tmux launch failed: %s", why)
+                    _append_event(goal_dir, {"event": "dispatch_failed", "ts": _now_iso(),
+                                             "attempt": current_attempt, "reason": why})
+                    return 2
+                _append_event(goal_dir, {
+                    "event": "dispatched", "ts": _now_iso(),
+                    "attempt": current_attempt,
+                    "tmux_session": tmux_session_name,
+                    "worktree_path": attempt_worktree_path,
+                    "log_path": str(log_path),
+                })
+                log.info("DISPATCHED: tmux=%s worktree=%s", tmux_session_name, attempt_worktree_path)
+                # Wait for completion (poll)
+                done, why_done = _poll_tmux_done(
+                    tmux_session_name, args.wall_clock_minutes, args.poll_interval_seconds
+                )
+                if not done:
+                    log.error("DISPATCH: tmux session timed out after %d min; killing session only",
+                              args.wall_clock_minutes)
+                    _kill_tmux_session(tmux_session_name)
+                    _append_event(goal_dir, {
+                        "event": "dispatch_timeout", "ts": _now_iso(),
+                        "attempt": current_attempt, "tmux_session": tmux_session_name,
+                        "killed_session": tmux_session_name,
+                    })
+                    # Escalate: do NOT touch services or repos
+                    _escalate(goal_dir, goal_path, current_attempt, 0,
+                              f"wall_clock timeout ({args.wall_clock_minutes} min) on attempt {current_attempt}",
+                              args, feature)
+                    return 2
+                _append_event(goal_dir, {
+                    "event": "dispatch_finished", "ts": _now_iso(),
+                    "attempt": current_attempt, "tmux_session": tmux_session_name,
+                })
+                log.info("DISPATCH_FINISHED: tmux=%s reason=%s", tmux_session_name, why_done)
+            else:
+                log.info("DISPATCH_SKIPPED: dry-run mode (no tmux launch)")
             resume = None
 
         # COLLECT
-        report_path = attempt_dir / "session-report.json"
-        if not report_path.is_file():
-            msg = (f"dry-run: prompt written to {attempt_dir / 'prompt.md'}. "
-                   f"No session report found. Place a session report at "
-                   f"{report_path} and re-run to continue.")
-            log.info(msg)
-            _append_event(goal_dir, {"event": "awaiting_report", "ts": _now_iso(),
+        if live_dispatch:
+            report_path, fallback_used, ok = _collect_session_report(attempt_dir)
+            if not ok:
+                log.error("COLLECT: no session report at %s and no legacy fallback", attempt_dir)
+                _append_event(goal_dir, {"event": "collect_failed", "ts": _now_iso(),
+                                         "attempt": current_attempt})
+                return 2
+            if fallback_used:
+                _append_event(goal_dir, {
+                    "event": "report_collected", "ts": _now_iso(),
+                    "attempt": current_attempt, "path": str(report_path),
+                    "fallback_used": True,
+                    "fallback_source": "/home/slimy/session-report.json",
+                })
+                log.info("report collected from legacy fallback (copied to %s)", report_path)
+            else:
+                _append_event(goal_dir, {"event": "report_collected", "ts": _now_iso(),
+                                         "attempt": current_attempt, "path": str(report_path),
+                                         "fallback_used": False})
+                log.info("report collected from %s", report_path)
+        else:
+            report_path = attempt_dir / "session-report.json"
+            if not report_path.is_file():
+                msg = (f"dry-run: prompt written to {attempt_dir / 'prompt.md'}. "
+                       f"No session report found. Place a session report at "
+                       f"{report_path} and re-run to continue.")
+                log.info(msg)
+                _append_event(goal_dir, {"event": "awaiting_report", "ts": _now_iso(),
+                                         "attempt": current_attempt, "path": str(report_path)})
+                return 0
+            log.info("found session-report.json at %s", report_path)
+            _append_event(goal_dir, {"event": "report_collected", "ts": _now_iso(),
                                      "attempt": current_attempt, "path": str(report_path)})
-            return 0
 
-        log.info("found session-report.json at %s", report_path)
-        _append_event(goal_dir, {"event": "report_collected", "ts": _now_iso(),
-                                 "attempt": current_attempt, "path": str(report_path)})
-
-        # GATE
-        qa_result = _run_qa_gate(args.feature_id, attempt_dir, args.feature_list, dry_run=True)
+        # GATE — in live mode, qa-gate runs the real truth-gate commands
+        qa_result = _run_qa_gate(args.feature_id, attempt_dir, args.feature_list,
+                                 dry_run=not live_dispatch)
         if qa_result is None:
             log.error("qa-gate produced no result for attempt %d", current_attempt)
             _append_event(goal_dir, {"event": "gate_error", "ts": _now_iso(),
