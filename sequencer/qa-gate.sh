@@ -149,11 +149,18 @@ else:
         truth_gate_verdict = "missing"
     else:
         import subprocess
+        # Build a clean env that always has PYTHONDONTWRITEBYTECODE=1
+        # so truth-gate Python commands cannot create __pycache__ in
+        # the worktree being evaluated. Inherits PATH/HOME/USER from
+        # the parent so the gate can still find binaries.
+        clean_env = dict(os.environ)
+        clean_env["PYTHONDONTWRITEBYTECODE"] = "1"
         for cmd in truth_gates:
             try:
                 proc = subprocess.run(
                     cmd, shell=True, cwd=project_path,
-                    capture_output=True, text=True, timeout=300
+                    capture_output=True, text=True, timeout=300,
+                    env=clean_env,
                 )
                 if proc.returncode != 0:
                     all_passed = False

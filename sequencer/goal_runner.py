@@ -455,6 +455,7 @@ def _build_live_prompt_preamble(attempt_dir, project_dir, feature_id):
         f"- DO NOT send any real Discord message.",
         f"- DO NOT read, print, or modify any .env file or webhook secret.",
         f"- DO NOT use git reset --hard, git clean, or git stash.",
+        f"- DO NOT create Python bytecode caches; PYTHONDONTWRITEBYTECODE=1 is set by goal-runner.",
         f"- Write your session report to: {report_path}",
         f"  (NOT /home/slimy/session-report.json — that path is legacy fallback only.)",
         f"- If the truth gate commands below fail, do not retry endlessly.",
@@ -464,7 +465,12 @@ def _build_live_prompt_preamble(attempt_dir, project_dir, feature_id):
 
 
 def _launch_tmux_session(session_name, worktree_path, agent_cmd, prompt_path, log_path):
-    """Spawn the agent in a tmux session, return (ok, message)."""
+    """Spawn the agent in a tmux session, return (ok, message).
+
+    The tmux session environment always includes PYTHONDONTWRITEBYTECODE=1
+    so the controlled live agent (and any helper Python the agent invokes)
+    does not create __pycache__ directories inside the attempt worktree.
+    """
     if subprocess.run(["tmux", "has-session", "-t", session_name],
                        capture_output=True).returncode == 0:
         return False, f"tmux session already exists: {session_name}"
@@ -475,9 +481,14 @@ def _launch_tmux_session(session_name, worktree_path, agent_cmd, prompt_path, lo
         f"echo DISPATCH_FINISHED exit=$? >> {shlex.quote(str(log_path))}"
     )
     try:
+        # Build the env-var prefix string for the tmux command. tmux
+        # new-session takes the command as a single string, so we prefix
+        # the env vars directly into that string. PYTHONDONTWRITEBYTECODE=1
+        # is required by Phase 2 hygiene to keep worktrees clean.
+        env_prefix = "PYTHONDONTWRITEBYTECODE=1 "
         proc = subprocess.run(
             ["tmux", "new-session", "-d", "-s", session_name, "-c", str(worktree_path),
-             agent_invocation],
+             env_prefix + agent_invocation],
             capture_output=True, text=True, timeout=30
         )
         if proc.returncode != 0:
