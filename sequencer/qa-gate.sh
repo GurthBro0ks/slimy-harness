@@ -119,6 +119,10 @@ elif isinstance(tests_count, int) and tests_passed is False:
 # Truth gate execution (dry-run vs real)
 failing_commands = []
 all_passed = True
+# Real mode (non-dry-run) populates these; dry-run leaves them as None.
+# They are recorded in qa-result.json for operator visibility / sync tests.
+project_path = None
+project_path_source = None
 
 if dry_run:
     truth_gate_verdict = "dry-run-skipped"
@@ -142,19 +146,41 @@ if dry_run:
             all_passed = False
         # else: all gates would pass in dry-run
 else:
-    # Real mode (Phase 2): cd to project dir and run each command
-    project_path = feature.get("path") or f"/opt/slimy/{feature.get('project','unknown')}"
+    # Real mode (Phase 2): cd to project dir and run each command.
+    # Project path resolution MUST match goal_runner.py's
+    # _resolve_project_path() helper. Precedence (highest first):
+    #   1. feature["project_path"] if present and non-empty
+    #   2. feature["repo_path"]    if present and non-empty
+    #   3. feature["path"]         if present and non-empty
+    #   4. fallback /opt/slimy/<feature["project"]>
+    # Empty / whitespace strings in fields 1-3 are skipped.
+    # See test_phase2_qa_path_and_cache_prefix.sh for the sync test.
+    def _resolve_project_path_qa(feat):
+        for key in ("project_path", "repo_path", "path"):
+            v = feat.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip(), key
+        proj = feat.get("project", "unknown")
+        return f"/opt/slimy/{proj}", "project_fallback"
+
+    project_path, project_path_source = _resolve_project_path_qa(feature)
+    print(f"[qa-gate] resolved project path: {project_path} (source={project_path_source})", file=sys.stderr)
     truth_gate_verdict = "pass"  # optimistic, flip if any fail
     if not truth_gates:
         truth_gate_verdict = "missing"
     else:
         import subprocess
         # Build a clean env that always has PYTHONDONTWRITEBYTECODE=1
+        # and PYTHONPYCACHEPREFIX pointed at <attempt_dir>/python-cache
         # so truth-gate Python commands cannot create __pycache__ in
         # the worktree being evaluated. Inherits PATH/HOME/USER from
         # the parent so the gate can still find binaries.
         clean_env = dict(os.environ)
         clean_env["PYTHONDONTWRITEBYTECODE"] = "1"
+        # Cache directory lives under the attempt artifact dir, OUTSIDE
+        # the repo worktree. Created on demand by Python.
+        cache_prefix = str(attempt_dir / "python-cache")
+        clean_env["PYTHONPYCACHEPREFIX"] = cache_prefix
         for cmd in truth_gates:
             try:
                 proc = subprocess.run(
@@ -266,6 +292,9 @@ qa_result = {
     "stub_detected": stub_detected,
     "fix_brief": fix_brief,
     "evidence": evidence,
+    "project_path": project_path,
+    "project_path_source": project_path_source,
+    "python_cache_prefix": (str(attempt_dir / "python-cache") if not dry_run else None),
 }
 
 with qa_result_path.open("w") as f:

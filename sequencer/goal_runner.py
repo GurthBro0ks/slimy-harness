@@ -483,6 +483,7 @@ def _build_live_prompt_preamble(attempt_dir, project_dir, feature_id):
         f"- DO NOT read, print, or modify any .env file or webhook secret.",
         f"- DO NOT use git reset --hard, git clean, or git stash.",
         f"- DO NOT create Python bytecode caches; PYTHONDONTWRITEBYTECODE=1 is set by goal-runner.",
+        f"- Python bytecode caches are redirected outside the worktree by goal-runner.",
         f"- Write your session report to: {report_path}",
         f"  (NOT /home/slimy/session-report.json — that path is legacy fallback only.)",
         f"- If the truth gate commands below fail, do not retry endlessly.",
@@ -491,12 +492,18 @@ def _build_live_prompt_preamble(attempt_dir, project_dir, feature_id):
     ]
 
 
-def _launch_tmux_session(session_name, worktree_path, agent_cmd, prompt_path, log_path):
+def _launch_tmux_session(session_name, worktree_path, agent_cmd, prompt_path, log_path,
+                        cache_prefix=None):
     """Spawn the agent in a tmux session, return (ok, message).
 
-    The tmux session environment always includes PYTHONDONTWRITEBYTECODE=1
+    The tmux session environment always includes:
+      PYTHONDONTWRITEBYTECODE=1
+      PYTHONPYCACHEPREFIX=<cache_prefix>  (if provided)
     so the controlled live agent (and any helper Python the agent invokes)
     does not create __pycache__ directories inside the attempt worktree.
+    PYTHONDONTWRITEBYTECODE alone is not enough for `python3 -m py_compile`
+    which writes bytecode regardless — PYTHONPYCACHEPREFIX redirects those
+    writes to a directory OUTSIDE the worktree.
     """
     if subprocess.run(["tmux", "has-session", "-t", session_name],
                        capture_output=True).returncode == 0:
@@ -510,9 +517,11 @@ def _launch_tmux_session(session_name, worktree_path, agent_cmd, prompt_path, lo
     try:
         # Build the env-var prefix string for the tmux command. tmux
         # new-session takes the command as a single string, so we prefix
-        # the env vars directly into that string. PYTHONDONTWRITEBYTECODE=1
-        # is required by Phase 2 hygiene to keep worktrees clean.
-        env_prefix = "PYTHONDONTWRITEBYTECODE=1 "
+        # the env vars directly into that string.
+        env_vars = ["PYTHONDONTWRITEBYTECODE=1"]
+        if cache_prefix:
+            env_vars.append(f"PYTHONPYCACHEPREFIX={shlex.quote(str(cache_prefix))}")
+        env_prefix = " ".join(env_vars) + " "
         proc = subprocess.run(
             ["tmux", "new-session", "-d", "-s", session_name, "-c", str(worktree_path),
              env_prefix + agent_invocation],
@@ -834,12 +843,17 @@ def main(argv=None):
             if live_dispatch:
                 tmux_session_name = f"{args.tmux_prefix}-{args.feature_id}-attempt-{current_attempt}"
                 log_path = attempt_dir / "dispatch.log"
+                # Python bytecode cache directory: lives UNDER the attempt
+                # artifact dir, OUTSIDE the repo worktree. Created on
+                # demand by Python (PYTHONPYCACHEPREFIX).
+                cache_prefix = attempt_dir / "python-cache"
                 ok, why = _launch_tmux_session(
                     tmux_session_name,
                     attempt_worktree_path or project_path,
                     args.agent_cmd,
                     prompt_path,
                     log_path,
+                    cache_prefix=cache_prefix,
                 )
                 if not ok:
                     log.error("DISPATCH: tmux launch failed: %s", why)
