@@ -164,6 +164,10 @@ else:
         return f"/opt/slimy/{proj}", "project_fallback"
 
     project_path, project_path_source = _resolve_project_path_qa(feature)
+    cwd_override = os.environ.get("QA_GATE_CWD")
+    if cwd_override and Path(cwd_override).is_dir():
+        project_path = cwd_override
+        project_path_source = "cwd_override"
     print(f"[qa-gate] resolved project path: {project_path} (source={project_path_source})", file=sys.stderr)
     truth_gate_verdict = "pass"  # optimistic, flip if any fail
     if not truth_gates:

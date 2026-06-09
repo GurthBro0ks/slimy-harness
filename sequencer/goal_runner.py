@@ -574,8 +574,14 @@ def _collect_session_report(attempt_dir):
     return None, False, False
 
 
-def _run_qa_gate(feature_id, attempt_dir, feature_list_path, dry_run=True):
-    """Invoke sequencer/qa-gate.sh and return the qa-result dict (or None)."""
+def _run_qa_gate(feature_id, attempt_dir, feature_list_path, dry_run=True, truth_gate_cwd=None):
+    """Invoke sequencer/qa-gate.sh and return the qa-result dict (or None).
+    
+    When truth_gate_cwd is provided (non-None), it is passed as QA_GATE_CWD
+    to qa-gate.sh so truth-gate commands execute inside the worktree rather
+    than the original project directory.  This is essential for retry mode
+    where each attempt has its own isolated worktree.
+    """
     repo_root = Path(__file__).resolve().parent.parent
     qa_gate = repo_root / "sequencer" / "qa-gate.sh"
     if not qa_gate.is_file():
@@ -583,6 +589,8 @@ def _run_qa_gate(feature_id, attempt_dir, feature_list_path, dry_run=True):
         return None
     env = os.environ.copy()
     env["QA_GATE_DRY_RUN"] = "1" if dry_run else "0"
+    if truth_gate_cwd:
+        env["QA_GATE_CWD"] = str(truth_gate_cwd)
     cmd = [
         "bash", str(qa_gate),
         feature_id,
@@ -932,7 +940,8 @@ def main(argv=None):
 
         # GATE — in live mode, qa-gate runs the real truth-gate commands
         qa_result = _run_qa_gate(args.feature_id, attempt_dir, args.feature_list,
-                                 dry_run=not live_dispatch)
+                                 dry_run=not live_dispatch,
+                                 truth_gate_cwd=attempt_worktree_path if live_dispatch else None)
         if qa_result is None:
             log.error("qa-gate produced no result for attempt %d", current_attempt)
             _append_event(goal_dir, {"event": "gate_error", "ts": _now_iso(),
@@ -987,8 +996,14 @@ def main(argv=None):
             log.info("RETRY: signals=%d", signals)
 
         # loop continuation
-        current_attempt += 1
         goal_state = _read_json(goal_path)
+        goal_state.setdefault("attempts", []).append({
+            "number": current_attempt,
+            "ended": _now_iso(),
+            "verdict": verdict,
+            "stuck_signals": signals,
+        })
+        current_attempt += 1
         goal_state["current_attempt"] = current_attempt
         _write_json(goal_path, goal_state)
         resume = None  # fresh attempt
