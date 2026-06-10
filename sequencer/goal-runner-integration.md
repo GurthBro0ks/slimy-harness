@@ -28,6 +28,7 @@ existing legacy dispatch path unchanged.
 | `HARNESS_GOAL_RUNNER_NOTIFY_MODE` | `disabled` | One of `disabled`, `dry-run`, `runtime`. `runtime` is downgraded to `disabled` in Phase 4. |
 | `HARNESS_GOAL_RUNNER_WORKTREE_ROOT` | `/tmp/slimy-goals` | Parent directory for per-attempt git worktrees. |
 | `HARNESS_GOAL_RUNNER_GOALS_DIR` | `/home/slimy/harness-logs/goals` | Directory for goal state files. |
+| `HARNESS_GOAL_RUNNER_AGENT_CMD` | (unset) | If set, passed as `--agent-cmd` to goal_runner.py. Defaults to `opencode` when unset. |
 
 ### Fail-Closed Behavior
 
@@ -102,6 +103,57 @@ HARNESS_GOAL_RUNNER_MAX_ATTEMPTS=1 \
 bash sequencer/auto-sequence.sh
 ```
 
+## Phase 6 (controlled live auto-sequence smoke)
+
+Phase 6 proves the real goal_runner.py can run in LIVE single-attempt mode
+through auto-sequence.sh's `run_goal_runner_dispatch()` with synthetic state.
+
+### New Environment Variable
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `HARNESS_GOAL_RUNNER_AGENT_CMD` | (unset) | Override the agent CLI. Passed as `--agent-cmd` to goal_runner.py. Used for smoke/testing with deterministic agents. |
+
+### Live Smoke Example
+
+```bash
+# Direct goal_runner.py invocation (simulating auto-sequence.sh dispatch):
+python3 sequencer/goal_runner.py <feature-id> \
+    --live-dispatch \
+    --max-attempts 1 \
+    --notify-mode disabled \
+    --feature-list $HARNESS_SMOKE_ROOT/feature_list.json \
+    --goals-dir $HARNESS_SMOKE_ROOT/goals \
+    --worktree-root $HARNESS_SMOKE_ROOT/worktrees \
+    --agent-cmd sequencer/tests/fixtures/test-agent-live-smoke.sh \
+    --poll-interval-seconds 2
+
+# Through auto-sequence.sh:
+HARNESS_SMOKE_ROOT=/tmp/smoke-root \
+HARNESS_SKIP_ENV_FILE=1 \
+HARNESS_USE_GOAL_RUNNER=1 \
+HARNESS_GOAL_RUNNER_LIVE_DISPATCH=1 \
+HARNESS_GOAL_RUNNER_NOTIFY_MODE=disabled \
+HARNESS_GOAL_RUNNER_MAX_ATTEMPTS=1 \
+HARNESS_GOAL_RUNNER_AGENT_CMD=/path/to/deterministic-agent \
+bash sequencer/auto-sequence.sh
+```
+
+### Deterministic Test Agent
+
+`sequencer/tests/fixtures/test-agent-live-smoke.sh` is a deterministic agent that:
+- Accepts the standard `run --dir <worktree> --dangerously-skip-permissions <prompt>` invocation
+- Extracts the session report path from the prompt preamble
+- Writes `src/main.py` with `print("smoke_ok")` in the worktree
+- Writes a passing session-report.json
+- Exits 0
+
+### Bug Fix
+
+Phase 6 also fixes an undefined `warn()` function bug in auto-sequence.sh.
+Two `|| warn "..."` calls in `run_dispatch()` (sync and notify) referenced
+a function that didn't exist. Added `warn()` alongside `log()` and `err()`.
+
 ## Future Phases
 
 To enable live dispatch:
@@ -157,3 +209,4 @@ The existing `auto-close.sh` chain handles that per the established QA separatio
 - **Phase 3**: Controlled live retry mode (max_attempts > 1 + fix-packet).
 - **Phase 4**: Wire into `auto-sequence.sh` behind opt-in gate.
 - **Phase 5**: Controlled auto-sequence smoke with `HARNESS_SMOKE_ROOT` and `HARNESS_SKIP_ENV_FILE` overrides.
+- **Phase 6**: Controlled live auto-sequence smoke with `HARNESS_GOAL_RUNNER_LIVE_DISPATCH=1`, deterministic test agent, and `HARNESS_GOAL_RUNNER_AGENT_CMD` support.

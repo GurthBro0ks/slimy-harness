@@ -56,6 +56,7 @@ for arg in "$@"; do
 done
 
 log() { echo "[$(date -Iseconds)] [auto-sequence] $*" >&2; }
+warn() { echo "[$(date -Iseconds)] [auto-sequence] WARN: $*" >&2; }
 err() { echo "[$(date -Iseconds)] [auto-sequence] ERROR: $*" >> "$ERROR_LOG"; }
 loop_log() { echo "[$(date -Iseconds)] [loop] $*" >> "${LOOP_LOG_DIR}/loop-$(date +%Y%m%d).log"; }
 
@@ -87,6 +88,7 @@ run_goal_runner_dispatch() {
 
   local _worktree_root="${HARNESS_GOAL_RUNNER_WORKTREE_ROOT:-/tmp/slimy-goals}"
   local _goals_dir="${HARNESS_GOAL_RUNNER_GOALS_DIR:-/home/slimy/harness-logs/goals}"
+  local _agent_cmd="${HARNESS_GOAL_RUNNER_AGENT_CMD:-}"
 
   local _cmd=(
     python3 "$_goal_runner"
@@ -108,6 +110,10 @@ run_goal_runner_dispatch() {
 
   if [ "${HARNESS_GOAL_RUNNER_ALLOW_RETRY:-}" = "1" ]; then
     export GOAL_RUNNER_ALLOW_RETRY=1
+  fi
+
+  if [ -n "$_agent_cmd" ]; then
+    _cmd+=(--agent-cmd "$_agent_cmd")
   fi
 
   "${_cmd[@]}"
