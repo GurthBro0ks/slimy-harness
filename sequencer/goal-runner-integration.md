@@ -154,20 +154,67 @@ Phase 6 also fixes an undefined `warn()` function bug in auto-sequence.sh.
 Two `|| warn "..."` calls in `run_dispatch()` (sync and notify) referenced
 a function that didn't exist. Added `warn()` alongside `log()` and `err()`.
 
-## Future Phases
+## Phase 7 (controlled live auto-sequence retry smoke)
 
-To enable live dispatch:
+Phase 7 proves the real auto-sequence.sh entrypoint can invoke goal_runner.py
+in LIVE retry mode with `max_attempts=2`, performing a full two-attempt cycle
+through synthetic state.
+
+### Retry Smoke Example
 
 ```bash
-export HARNESS_USE_GOAL_RUNNER=1
-export HARNESS_GOAL_RUNNER_LIVE_DISPATCH=1
-export HARNESS_GOAL_RUNNER_MAX_ATTEMPTS=2
-export HARNESS_GOAL_RUNNER_ALLOW_RETRY=1
-export HARNESS_GOAL_RUNNER_NOTIFY_MODE=dry-run   # or runtime when approved
+# Through auto-sequence.sh (recommended):
+HARNESS_SMOKE_ROOT=/tmp/smoke-root \
+HARNESS_SKIP_ENV_FILE=1 \
+HARNESS_USE_GOAL_RUNNER=1 \
+HARNESS_GOAL_RUNNER_LIVE_DISPATCH=1 \
+HARNESS_GOAL_RUNNER_NOTIFY_MODE=disabled \
+HARNESS_GOAL_RUNNER_MAX_ATTEMPTS=2 \
+HARNESS_GOAL_RUNNER_ALLOW_RETRY=1 \
+HARNESS_GOAL_RUNNER_WORKTREE_ROOT=/tmp/smoke-root/worktrees \
+HARNESS_GOAL_RUNNER_GOALS_DIR=/tmp/smoke-root/goals \
+HARNESS_GOAL_RUNNER_AGENT_CMD=sequencer/tests/fixtures/test-agent-live-retry-smoke.sh \
+bash sequencer/auto-sequence.sh
+
+# Direct goal_runner.py invocation:
+GOAL_RUNNER_ALLOW_RETRY=1 python3 sequencer/goal_runner.py <feature-id> \
+    --live-dispatch \
+    --max-attempts 2 \
+    --notify-mode disabled \
+    --feature-list $HARNESS_SMOKE_ROOT/feature_list.json \
+    --goals-dir $HARNESS_SMOKE_ROOT/goals \
+    --worktree-root $HARNESS_SMOKE_ROOT/worktrees \
+    --agent-cmd sequencer/tests/fixtures/test-agent-live-retry-smoke.sh \
+    --poll-interval-seconds 2
+```
+
+### Deterministic Retry Test Agent
+
+`sequencer/tests/fixtures/test-agent-live-retry-smoke.sh` is a deterministic agent that:
+- Detects attempt number from the worktree path (`attempt-N` directory)
+- Extracts the session report path from the prompt preamble
+- Attempt 1: writes `src/main.py` with `print("wrong")` and a failing session report
+- Attempt 2: writes `src/main.py` with `print("retry_ok")` and a passing session report
+- Never touches production paths, never sends Discord, never pushes
+
+### Known Side-Effect
+
+When running the real `auto-sequence.sh` entrypoint with `HARNESS_SMOKE_ROOT`,
+the `auto-close.sh` step runs against the synthetic session report and may
+update the production `feature_list.json`. This is expected: auto-close is a
+legacy side-effect of running through the full auto-sequence.sh path. The
+goal-runner itself does not modify `feature_list.json`.
+
+## Future Phases
+
+To enable live dispatch with runtime notification:
+
+```bash
+export HARNESS_GOAL_RUNNER_NOTIFY_MODE=runtime   # requires GOAL_RUNNER_ALLOW_RUNTIME_NOTIFY=1
 ```
 
 Future phases may also:
-- Set `HARNESS_GOAL_RUNNER_MAX_ATTEMPTS=2` or `3`.
+- Set `HARNESS_GOAL_RUNNER_MAX_ATTEMPTS=3`.
 - Enable `HARNESS_GOAL_RUNNER_NOTIFY_MODE=runtime` with an explicit allow flag.
 
 ## Rollback
@@ -210,3 +257,4 @@ The existing `auto-close.sh` chain handles that per the established QA separatio
 - **Phase 4**: Wire into `auto-sequence.sh` behind opt-in gate.
 - **Phase 5**: Controlled auto-sequence smoke with `HARNESS_SMOKE_ROOT` and `HARNESS_SKIP_ENV_FILE` overrides.
 - **Phase 6**: Controlled live auto-sequence smoke with `HARNESS_GOAL_RUNNER_LIVE_DISPATCH=1`, deterministic test agent, and `HARNESS_GOAL_RUNNER_AGENT_CMD` support.
+- **Phase 7**: Controlled live auto-sequence retry smoke with `MAX_ATTEMPTS=2`, `ALLOW_RETRY=1`, deterministic retry agent, and full two-attempt cycle (fail→fix→pass).
