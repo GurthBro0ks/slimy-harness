@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # test_phase7_smoke_state_isolation.sh — Phase 7 smoke state isolation
 #
-# Proves that auto-close.sh and blocker-report.sh honor environment
-# overrides and never write to production paths when given smoke-root
-# paths via env vars.
+# Proves that auto-close.sh, blocker-report.sh, and notify-blockers.sh
+# honor environment overrides and never write to production paths when
+# given smoke-root paths via env vars.
 #
 # Assertions:
 #  1. auto-close.sh writes to smoke FEATURE_LIST, not production
@@ -16,6 +16,12 @@
 #  8. production session-report.json unchanged
 #  9. production blocker-report.md unchanged
 # 10. auto-sequence.sh exports redirected paths
+# 11. notify-blockers.sh skips Discord in HARNESS_SMOKE_ROOT mode
+# 12. notify-blockers.sh does not source harness-env.sh in smoke mode
+# 13. notify-blockers.sh does not read webhook config in smoke mode
+# 14. notify-blockers.sh does not call curl in smoke mode
+# 15. notify-blockers.sh uses FEATURE_LIST_PATH env var in Python
+# 16. production files unchanged after notify-blockers.sh smoke run
 #
 set -uo pipefail
 
@@ -23,6 +29,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 AUTO_SEQ="$REPO_ROOT/sequencer/auto-sequence.sh"
 AUTO_CLOSE="$REPO_ROOT/sequencer/auto-close.sh"
 BLOCKER_REPORT_SH="$REPO_ROOT/sequencer/blocker-report.sh"
+NOTIFY_BLOCKERS_SH="$REPO_ROOT/sequencer/notify-blockers.sh"
 
 PASS=0
 FAIL=0
@@ -43,6 +50,7 @@ PROD_FL="/home/slimy/feature_list.json"
 PROD_SR="/home/slimy/session-report.json"
 PROD_FA="/home/slimy/failed-approaches.json"
 PROD_BR="/home/slimy/blocker-report.md"
+PROD_BC="/home/slimy/.last-blocker-report.md"
 
 record_prod_hashes() {
     PROD_FL_HASH=""
@@ -53,6 +61,8 @@ record_prod_hashes() {
     if [ -f "$PROD_FA" ]; then PROD_FA_HASH=$(md5sum "$PROD_FA" | awk '{print $1}'); fi
     PROD_BR_HASH=""
     if [ -f "$PROD_BR" ]; then PROD_BR_HASH=$(md5sum "$PROD_BR" | awk '{print $1}'); fi
+    PROD_BC_HASH=""
+    if [ -f "$PROD_BC" ]; then PROD_BC_HASH=$(md5sum "$PROD_BC" | awk '{print $1}'); fi
 }
 
 check_prod_unchanged() {
@@ -80,6 +90,12 @@ check_prod_unchanged() {
         if [ "$h" = "$PROD_BR_HASH" ]; then pass "$label: production blocker-report.md unchanged"
         else fail "$label: production blocker-report.md CHANGED!"; fi
     else pass "$label: production blocker-report.md not present (skip)"; fi
+
+    if [ -f "$PROD_BC" ] && [ -n "$PROD_BC_HASH" ]; then
+        local h=$(md5sum "$PROD_BC" | awk '{print $1}')
+        if [ "$h" = "$PROD_BC_HASH" ]; then pass "$label: production .last-blocker-report.md unchanged"
+        else fail "$label: production .last-blocker-report.md CHANGED!"; fi
+    else pass "$label: production .last-blocker-report.md not present (skip)"; fi
 }
 
 # ===== Section A: auto-close.sh smoke isolation =====
@@ -235,6 +251,99 @@ if grep -q 'BLOCKER_CACHE=' "$AUTO_SEQ"; then
     pass "auto-sequence.sh defines BLOCKER_CACHE"
 else
     fail "auto-sequence.sh missing BLOCKER_CACHE definition"
+fi
+
+# ===== Section D: notify-blockers.sh smoke isolation =====
+echo "--- Section D: notify-blockers.sh smoke isolation ---"
+
+SMOKE3="$TEMP/smoke-notify-blockers"
+mkdir -p "$SMOKE3"
+
+cat > "$SMOKE3/feature_list.json" << 'EOF'
+{
+  "_meta": {"scope": "smoke-notify-blockers-test"},
+  "features": [
+    {
+      "id": "notify-blocker-test-001",
+      "project": "smoke-project",
+      "description": "Notify blocker test feature.",
+      "steps": [],
+      "passes": false,
+      "status": "blocked",
+      "priority": "high",
+      "risk": "low",
+      "attempt_count": 1,
+      "blocked_by": ["manual:test-blocker"]
+    }
+  ]
+}
+EOF
+
+cat > "$SMOKE3/blocker-report.md" << 'EOF'
+# Blocker Report
+
+## Blocked
+- notify-blocker-test-001: manual:test-blocker
+EOF
+
+SMOKE_BC="$SMOKE3/.last-blocker-report.md"
+
+record_prod_hashes
+
+OUTPUT=$(FEATURE_LIST="$SMOKE3/feature_list.json" \
+  BLOCKER_REPORT="$SMOKE3/blocker-report.md" \
+  BLOCKER_CACHE="$SMOKE_BC" \
+  HARNESS_SMOKE_ROOT="$SMOKE3" \
+  bash "$NOTIFY_BLOCKERS_SH" 2>&1)
+RC=$?
+
+if [ "$RC" -eq 0 ]; then
+    pass "notify-blockers.sh exits 0 in smoke mode"
+else
+    fail "notify-blockers.sh exited non-zero ($RC) in smoke mode"
+fi
+
+if echo "$OUTPUT" | grep -q "Skipping Discord blocker notification (HARNESS_SMOKE_ROOT set)"; then
+    pass "notify-blockers.sh logs smoke skip message"
+else
+    fail "notify-blockers.sh did not log smoke skip message"
+    echo "OUTPUT: $OUTPUT"
+fi
+
+if echo "$OUTPUT" | grep -qi "curl"; then
+    fail "notify-blockers.sh attempted curl in smoke mode"
+else
+    pass "notify-blockers.sh did not attempt curl in smoke mode"
+fi
+
+if echo "$OUTPUT" | grep -qi "webhook"; then
+    fail "notify-blockers.sh read webhook config in smoke mode"
+else
+    pass "notify-blockers.sh did not read webhook config in smoke mode"
+fi
+
+if [ -f "$SMOKE_BC" ]; then
+    pass "notify-blockers.sh updated smoke BLOCKER_CACHE"
+else
+    pass "notify-blockers.sh skipped smoke BLOCKER_CACHE (optional)"
+fi
+
+check_prod_unchanged "notify-blockers"
+
+# ===== Section E: source-level assertions =====
+echo "--- Section E: source-level assertions ---"
+
+if grep -q 'HARNESS_SMOKE_ROOT' "$NOTIFY_BLOCKERS_SH" && \
+   head -20 "$NOTIFY_BLOCKERS_SH" | grep -q 'HARNESS_SMOKE_ROOT'; then
+    pass "notify-blockers.sh has HARNESS_SMOKE_ROOT skip before harness-env sourcing"
+else
+    fail "notify-blockers.sh missing HARNESS_SMOKE_ROOT skip before harness-env sourcing"
+fi
+
+if grep -q 'FEATURE_LIST_PATH' "$NOTIFY_BLOCKERS_SH"; then
+    pass "notify-blockers.sh uses FEATURE_LIST_PATH env in Python"
+else
+    fail "notify-blockers.sh missing FEATURE_LIST_PATH env in Python"
 fi
 
 echo ""

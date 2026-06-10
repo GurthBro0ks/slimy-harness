@@ -8,6 +8,17 @@ SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
 
 log() { echo "[$(date -Iseconds)] [notify-blockers] $*"; }
 
+if [ -n "${HARNESS_SMOKE_ROOT:-}" ]; then
+  log "Skipping Discord blocker notification (HARNESS_SMOKE_ROOT set)"
+
+  if [ -f "$FEATURE_LIST" ] && [ -f "${BLOCKER_REPORT:-}" ]; then
+    SMOKE_CACHE="${BLOCKER_CACHE:-"${HARNESS_SMOKE_ROOT}/.last-blocker-report.md"}"
+    cp "$BLOCKER_REPORT" "$SMOKE_CACHE" 2>/dev/null || true
+  fi
+
+  exit 0
+fi
+
 # Load harness env for DISCORD_HARNESS_WEBHOOK_URL
 # shellcheck disable=SC1090
 if [ -f "${SEQUNCER_DIR}/harness-env.sh" ]; then
@@ -40,10 +51,10 @@ if [ -f "$BLOCKER_REPORT" ] && [ -f "$BLOCKER_CACHE" ]; then
   fi
 fi
 
-PAYLOAD=$(BLOCKERS_CHANGED="$BLOCKERS_CHANGED" python3 << 'PYEOF'
+PAYLOAD=$(FEATURE_LIST_PATH="$FEATURE_LIST" BLOCKERS_CHANGED="$BLOCKERS_CHANGED" python3 << 'PYEOF'
 import json, os
 
-feature_list_path = "$FEATURE_LIST"
+feature_list_path = os.environ["FEATURE_LIST_PATH"]
 blockers_changed = int(os.environ.get("BLOCKERS_CHANGED", "1"))
 
 with open(feature_list_path) as f:
