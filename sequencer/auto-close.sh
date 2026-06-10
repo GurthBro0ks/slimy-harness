@@ -10,9 +10,9 @@
 # the same approaches.
 set -euo pipefail
 
-SESSION_REPORT="/home/slimy/session-report.json"
-FEATURE_LIST="/home/slimy/feature_list.json"
-FAILED_APPROACHES="/home/slimy/failed-approaches.json"
+SESSION_REPORT="${SESSION_REPORT:-/home/slimy/session-report.json}"
+FEATURE_LIST="${FEATURE_LIST:-/home/slimy/feature_list.json}"
+FAILED_APPROACHES="${FAILED_APPROACHES:-/home/slimy/failed-approaches.json}"
 
 log() { echo "[$(date -Iseconds)] [auto-close] $*"; }
 
@@ -243,7 +243,9 @@ python3 -c "import json; json.load(open('$FAILED_APPROACHES')); print('[auto-clo
 # notify-session-complete.sh ensures at most one Discord message per
 # report even if auto-sequence.sh also calls it from run_dispatch().
 NOTIFIER="${HARNESS_ROOT:-/home/slimy/slimy-harness}/sequencer/notify-session-complete.sh"
-if [ -f "$NOTIFIER" ] && [ -f "$SESSION_REPORT" ]; then
+if [ -n "${HARNESS_SMOKE_ROOT:-}" ]; then
+  log "Skipping Discord notification (HARNESS_SMOKE_ROOT set)"
+elif [ -f "$NOTIFIER" ] && [ -f "$SESSION_REPORT" ]; then
   log "Sending Discord completion notification..."
   bash "$NOTIFIER" "$SESSION_REPORT" 2>&1 \
     || log "WARNING: notify-session-complete.sh exited non-zero (non-fatal)"

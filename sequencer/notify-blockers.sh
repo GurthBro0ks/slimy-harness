@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-FEATURE_LIST="/home/slimy/feature_list.json"
-BLOCKER_REPORT="/home/slimy/blocker-report.md"
-BLOCKER_CACHE="/home/slimy/.last-blocker-report.md"
+FEATURE_LIST="${FEATURE_LIST:-/home/slimy/feature_list.json}"
+BLOCKER_REPORT="${BLOCKER_REPORT:-/home/slimy/blocker-report.md}"
+BLOCKER_CACHE="${BLOCKER_CACHE:-/home/slimy/.last-blocker-report.md}"
 SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
 
 log() { echo "[$(date -Iseconds)] [notify-blockers] $*"; }
@@ -43,7 +43,7 @@ fi
 PAYLOAD=$(BLOCKERS_CHANGED="$BLOCKERS_CHANGED" python3 << 'PYEOF'
 import json, os
 
-feature_list_path = "/home/slimy/feature_list.json"
+feature_list_path = "$FEATURE_LIST"
 blockers_changed = int(os.environ.get("BLOCKERS_CHANGED", "1"))
 
 with open(feature_list_path) as f:

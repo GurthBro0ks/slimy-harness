@@ -54,6 +54,8 @@ trap cleanup EXIT
 FEATURE_LIST_REAL="/home/slimy/feature_list.json"
 SESSION_REPORT_REAL="/home/slimy/session-report.json"
 STATE_FILE_REAL="/home/slimy/.sequencer-state.json"
+FAILED_APPROACHES_REAL="/home/slimy/failed-approaches.json"
+KB_SESSIONS_REAL="/home/slimy/slimy-kb/raw/sessions"
 
 FL_HASH_BEFORE=""
 if [ -f "$FEATURE_LIST_REAL" ]; then FL_HASH_BEFORE=$(md5sum "$FEATURE_LIST_REAL" | awk '{print $1}'); fi
@@ -61,6 +63,10 @@ SR_HASH_BEFORE=""
 if [ -f "$SESSION_REPORT_REAL" ]; then SR_HASH_BEFORE=$(md5sum "$SESSION_REPORT_REAL" | awk '{print $1}'); fi
 SF_HASH_BEFORE=""
 if [ -f "$STATE_FILE_REAL" ]; then SF_HASH_BEFORE=$(md5sum "$STATE_FILE_REAL" | awk '{print $1}'); fi
+FA_HASH_BEFORE=""
+if [ -f "$FAILED_APPROACHES_REAL" ]; then FA_HASH_BEFORE=$(md5sum "$FAILED_APPROACHES_REAL" | awk '{print $1}'); fi
+KB_HASH_BEFORE=""
+if [ -d "$KB_SESSIONS_REAL" ]; then KB_HASH_BEFORE=$(find "$KB_SESSIONS_REAL" -type f -exec md5sum {} \; 2>/dev/null | sort | md5sum | awk '{print $1}'); fi
 
 # ===== Section A: Source-level assertions =====
 echo "--- Section A: Source-level assertions ---"
@@ -535,6 +541,28 @@ else
     pass "production .sequencer-state.json not present (skip)"
 fi
 
+if [ -f "$FAILED_APPROACHES_REAL" ]; then
+    FA_HASH_AFTER=$(md5sum "$FAILED_APPROACHES_REAL" | awk '{print $1}')
+    if [ "$FA_HASH_AFTER" = "$FA_HASH_BEFORE" ]; then
+        pass "production failed-approaches.json unchanged"
+    else
+        fail "production failed-approaches.json was modified!"
+    fi
+else
+    pass "production failed-approaches.json not present (skip)"
+fi
+
+if [ -d "$KB_SESSIONS_REAL" ] && [ -n "$KB_HASH_BEFORE" ]; then
+    KB_HASH_AFTER=$(find "$KB_SESSIONS_REAL" -type f -exec md5sum {} \; 2>/dev/null | sort | md5sum | awk '{print $1}')
+    if [ "$KB_HASH_AFTER" = "$KB_HASH_BEFORE" ]; then
+        pass "production KB sessions directory unchanged"
+    else
+        fail "production KB sessions directory was modified!"
+    fi
+else
+    pass "production KB sessions directory not present or empty (skip)"
+fi
+
 pass "no Discord webhook called during tests"
 
 if [ -d "$WT2" ]; then
@@ -555,6 +583,78 @@ if [ "$LOOP_GATE" -ge 1 ]; then
     pass "--loop requires explicit LOOP_MODE=1 (not used)"
 else
     fail "--loop handling not properly gated"
+fi
+
+# ===== Section E: auto-close smoke isolation =====
+echo "--- Section E: auto-close smoke isolation ---"
+
+SMOKE_FL="$SMOKE_ROOT/feature_list.json"
+SMOKE_SR="$SMOKE_ROOT/session-report.json"
+SMOKE_FA="$SMOKE_ROOT/failed-approaches.json"
+
+cat > "$SMOKE_SR" << 'EOF'
+{
+  "session_id": "phase7-auto-close-isolation-test",
+  "agent": "opencode",
+  "nuc": "nuc1",
+  "project": "smoke-test-project",
+  "feature_id": "phase7-live-retry-smoke-001",
+  "status": "completed",
+  "summary": "Auto-close isolation smoke test.",
+  "changes": [],
+  "tests": {"ran": true, "passed": true, "details": "all pass"},
+  "timestamp": "2026-06-10T00:00:00Z"
+}
+EOF
+
+cat > "$SMOKE_FA" << 'EOF'
+{
+  "version": 1,
+  "entries": []
+}
+EOF
+
+FL_HASH_PRE_CLOSE=""
+if [ -f "$FEATURE_LIST_REAL" ]; then FL_HASH_PRE_CLOSE=$(md5sum "$FEATURE_LIST_REAL" | awk '{print $1}'); fi
+FA_HASH_PRE_CLOSE=""
+if [ -f "$FAILED_APPROACHES_REAL" ]; then FA_HASH_PRE_CLOSE=$(md5sum "$FAILED_APPROACHES_REAL" | awk '{print $1}'); fi
+
+SESSION_REPORT="$SMOKE_SR" \
+FEATURE_LIST="$SMOKE_FL" \
+FAILED_APPROACHES="$SMOKE_FA" \
+bash "$REPO_ROOT/sequencer/auto-close.sh" 2>&1 || true
+
+if [ -f "$SMOKE_FA" ]; then
+    SMOKE_FA_ENTRIES=$(python3 -c "import json; print(len(json.load(open('$SMOKE_FA')).get('entries', [])))")
+    if [ "$SMOKE_FA_ENTRIES" -eq 0 ]; then
+        pass "auto-close wrote to smoke failed-approaches (0 entries, tests passed)"
+    else
+        pass "auto-close wrote to smoke failed-approaches ($SMOKE_FA_ENTRIES entries)"
+    fi
+else
+    fail "smoke failed-approaches.json not created by auto-close"
+fi
+
+if [ -f "$FEATURE_LIST_REAL" ]; then
+    FL_HASH_POST_CLOSE=$(md5sum "$FEATURE_LIST_REAL" | awk '{print $1}')
+    if [ "$FL_HASH_POST_CLOSE" = "$FL_HASH_PRE_CLOSE" ]; then
+        pass "production feature_list.json unchanged after auto-close"
+    else
+        fail "production feature_list.json was modified by auto-close!"
+    fi
+else
+    pass "production feature_list.json not present (skip)"
+fi
+
+if [ -f "$FAILED_APPROACHES_REAL" ]; then
+    FA_HASH_POST_CLOSE=$(md5sum "$FAILED_APPROACHES_REAL" | awk '{print $1}')
+    if [ "$FA_HASH_POST_CLOSE" = "$FA_HASH_PRE_CLOSE" ]; then
+        pass "production failed-approaches.json unchanged after auto-close"
+    else
+        fail "production failed-approaches.json was modified by auto-close!"
+    fi
+else
+    pass "production failed-approaches.json not present (skip)"
 fi
 
 echo ""

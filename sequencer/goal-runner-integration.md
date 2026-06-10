@@ -87,6 +87,12 @@ When `HARNESS_SMOKE_ROOT` is set:
 - `ERROR_LOG` → `$HARNESS_SMOKE_ROOT/logs/sequencer-errors.log`
 - `PENDING_APPROVAL` → `$HARNESS_SMOKE_ROOT/pending-approval.json`
 - `DISPATCH_OUTPUT` → `$HARNESS_SMOKE_ROOT/qwen-dispatch-output.json`
+- `BLOCKER_REPORT` → `$HARNESS_SMOKE_ROOT/blocker-report.md`
+- `BLOCKER_CACHE` → `$HARNESS_SMOKE_ROOT/.last-blocker-report.md`
+
+All redirected paths are exported to child processes (auto-close.sh,
+blocker-report.sh, notify-blockers.sh) so the full chain operates
+entirely within the smoke sandbox.
 
 Note: `SEQUNCER_DIR` and `NARRATIVE` are NOT redirected (they point to the
 real harness repo). For smoke runs that need a stub `goal_runner.py`, use a
@@ -197,13 +203,16 @@ GOAL_RUNNER_ALLOW_RETRY=1 python3 sequencer/goal_runner.py <feature-id> \
 - Attempt 2: writes `src/main.py` with `print("retry_ok")` and a passing session report
 - Never touches production paths, never sends Discord, never pushes
 
-### Known Side-Effect
+### Smoke Isolation Guarantee
 
-When running the real `auto-sequence.sh` entrypoint with `HARNESS_SMOKE_ROOT`,
-the `auto-close.sh` step runs against the synthetic session report and may
-update the production `feature_list.json`. This is expected: auto-close is a
-legacy side-effect of running through the full auto-sequence.sh path. The
-goal-runner itself does not modify `feature_list.json`.
+In HARNESS_SMOKE_ROOT mode, production feature_list.json,
+session-report.json, .sequencer-state.json, failed-approaches.json,
+and KB session archives must remain unchanged. Mutation of any
+production state is a hard failure.
+
+The full auto-sequence.sh chain (auto-close.sh, blocker-report.sh,
+notify-blockers.sh) honors exported path overrides so that smoke runs
+write only to `$HARNESS_SMOKE_ROOT/` paths.
 
 ## Future Phases
 

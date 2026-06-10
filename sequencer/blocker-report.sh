@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-FEATURE_LIST="/home/slimy/feature_list.json"
-SESSION_REPORT="/home/slimy/session-report.json"
-OUTPUT="/home/slimy/blocker-report.md"
+FEATURE_LIST="${FEATURE_LIST:-/home/slimy/feature_list.json}"
+SESSION_REPORT="${SESSION_REPORT:-/home/slimy/session-report.json}"
+OUTPUT="${BLOCKER_REPORT:-/home/slimy/blocker-report.md}"
 
 log() { echo "[$(date -Iseconds)] [blocker-report] $*"; }
 
@@ -12,13 +12,13 @@ if [ ! -f "$FEATURE_LIST" ]; then
   exit 1
 fi
 
-python3 << 'PYEOF'
+python3 << PYEOF
 import json
 from datetime import datetime, timezone
 
-feature_list_path = "/home/slimy/feature_list.json"
-session_report_path = "/home/slimy/session-report.json"
-output_path = "/home/slimy/blocker-report.md"
+feature_list_path = "$FEATURE_LIST"
+session_report_path = "$SESSION_REPORT"
+output_path = "$OUTPUT"
 
 with open(feature_list_path) as f:
     fl = json.load(f)

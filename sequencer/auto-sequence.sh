@@ -18,6 +18,8 @@ if [ -n "${HARNESS_SMOKE_ROOT:-}" ]; then
   ERROR_LOG="$HARNESS_SMOKE_ROOT/logs/sequencer-errors.log"
   PENDING_APPROVAL="$HARNESS_SMOKE_ROOT/pending-approval.json"
   DISPATCH_OUTPUT="$HARNESS_SMOKE_ROOT/qwen-dispatch-output.json"
+  BLOCKER_REPORT="$HARNESS_SMOKE_ROOT/blocker-report.md"
+  BLOCKER_CACHE="$HARNESS_SMOKE_ROOT/.last-blocker-report.md"
   mkdir -p "$LOOP_LOG_DIR" "$KB_SESSIONS_DIR"
 else
   STOP_FILE="/home/slimy/.harness-stop"
@@ -32,6 +34,13 @@ else
   ERROR_LOG="/home/slimy/sequencer-errors.log"
   PENDING_APPROVAL="/home/slimy/pending-approval.json"
   DISPATCH_OUTPUT="/tmp/qwen-dispatch-output.json"
+  BLOCKER_REPORT="/home/slimy/blocker-report.md"
+  BLOCKER_CACHE="/home/slimy/.last-blocker-report.md"
+fi
+
+export SESSION_REPORT FEATURE_LIST FAILED_APPROACHES BLOCKER_REPORT BLOCKER_CACHE
+if [ -n "${HARNESS_SMOKE_ROOT:-}" ]; then
+  export HARNESS_SMOKE_ROOT
 fi
 
 HARNESS_ENV_FILE="/home/slimy/.slimy-harness.env"
