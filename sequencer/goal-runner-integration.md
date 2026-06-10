@@ -60,7 +60,49 @@ Without `HARNESS_USE_GOAL_RUNNER=1`, the dispatch path is:
 3. Dispatched via `opencode run` in tmux (or fallback).
 4. State update + Discord notification.
 
-## Phase 5 (future)
+## Phase 5 (controlled auto-sequence smoke)
+
+Phase 5 adds smoke/test environment overrides to auto-sequence.sh so the
+goal-runner path can be exercised against synthetic state without touching
+production files.
+
+### Smoke/Test Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `HARNESS_SMOKE_ROOT` | (unset) | When set, redirects all mutable paths to `$HARNESS_SMOKE_ROOT/...`. Production paths unchanged when unset. |
+| `HARNESS_SKIP_ENV_FILE` | (unset) | When `1`, skips sourcing `/home/slimy/.slimy-harness.env`. |
+
+### Paths Redirected by HARNESS_SMOKE_ROOT
+
+When `HARNESS_SMOKE_ROOT` is set:
+- `STOP_FILE` → `$HARNESS_SMOKE_ROOT/harness-stop`
+- `LOOP_LOG_DIR` → `$HARNESS_SMOKE_ROOT/logs`
+- `SESSION_REPORT` → `$HARNESS_SMOKE_ROOT/session-report.json`
+- `FEATURE_LIST` → `$HARNESS_SMOKE_ROOT/feature_list.json`
+- `FAILED_APPROACHES` → `$HARNESS_SMOKE_ROOT/failed-approaches.json`
+- `STATE_FILE` → `$HARNESS_SMOKE_ROOT/sequencer-state.json`
+- `KB_SESSIONS_DIR` → `$HARNESS_SMOKE_ROOT/kb-sessions`
+- `ERROR_LOG` → `$HARNESS_SMOKE_ROOT/logs/sequencer-errors.log`
+- `PENDING_APPROVAL` → `$HARNESS_SMOKE_ROOT/pending-approval.json`
+- `DISPATCH_OUTPUT` → `$HARNESS_SMOKE_ROOT/qwen-dispatch-output.json`
+
+Note: `SEQUNCER_DIR` and `NARRATIVE` are NOT redirected (they point to the
+real harness repo). For smoke runs that need a stub `goal_runner.py`, use a
+modified copy of auto-sequence.sh with `SEQUNCER_DIR` pointing to a stub dir.
+
+### Smoke Example
+
+```bash
+HARNESS_SMOKE_ROOT=/tmp/smoke-root \
+HARNESS_SKIP_ENV_FILE=1 \
+HARNESS_USE_GOAL_RUNNER=1 \
+HARNESS_GOAL_RUNNER_NOTIFY_MODE=disabled \
+HARNESS_GOAL_RUNNER_MAX_ATTEMPTS=1 \
+bash sequencer/auto-sequence.sh
+```
+
+## Future Phases
 
 To enable live dispatch:
 
@@ -72,7 +114,7 @@ export HARNESS_GOAL_RUNNER_ALLOW_RETRY=1
 export HARNESS_GOAL_RUNNER_NOTIFY_MODE=dry-run   # or runtime when approved
 ```
 
-Phase 5 may also:
+Future phases may also:
 - Set `HARNESS_GOAL_RUNNER_MAX_ATTEMPTS=2` or `3`.
 - Enable `HARNESS_GOAL_RUNNER_NOTIFY_MODE=runtime` with an explicit allow flag.
 
@@ -113,5 +155,5 @@ The existing `auto-close.sh` chain handles that per the established QA separatio
 - **Phase 1**: Dry-run controller (`--dry-run` enforced). Tests + fixtures.
 - **Phase 2**: Controlled live single-attempt mode (`--live-dispatch` + worktree).
 - **Phase 3**: Controlled live retry mode (max_attempts > 1 + fix-packet).
-- **Phase 4**: Wire into `auto-sequence.sh` behind opt-in gate (this phase).
-- **Phase 5**: (future) Enable live dispatch from auto-sequence with retry.
+- **Phase 4**: Wire into `auto-sequence.sh` behind opt-in gate.
+- **Phase 5**: Controlled auto-sequence smoke with `HARNESS_SMOKE_ROOT` and `HARNESS_SKIP_ENV_FILE` overrides.

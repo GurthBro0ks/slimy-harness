@@ -4,24 +4,42 @@ set -euo pipefail
 DRY_RUN="${DRY_RUN:-0}"
 MAX_SESSIONS="${MAX_SESSIONS:-5}"
 LOOP_MODE=0
-STOP_FILE="/home/slimy/.harness-stop"
-LOOP_LOG_DIR="/home/slimy/harness-logs"
+
+if [ -n "${HARNESS_SMOKE_ROOT:-}" ]; then
+  STOP_FILE="$HARNESS_SMOKE_ROOT/harness-stop"
+  LOOP_LOG_DIR="$HARNESS_SMOKE_ROOT/logs"
+  SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
+  SESSION_REPORT="$HARNESS_SMOKE_ROOT/session-report.json"
+  FEATURE_LIST="$HARNESS_SMOKE_ROOT/feature_list.json"
+  FAILED_APPROACHES="$HARNESS_SMOKE_ROOT/failed-approaches.json"
+  NARRATIVE="/home/slimy/PROJECT_NARRATIVE.md"
+  STATE_FILE="$HARNESS_SMOKE_ROOT/sequencer-state.json"
+  KB_SESSIONS_DIR="$HARNESS_SMOKE_ROOT/kb-sessions"
+  ERROR_LOG="$HARNESS_SMOKE_ROOT/logs/sequencer-errors.log"
+  PENDING_APPROVAL="$HARNESS_SMOKE_ROOT/pending-approval.json"
+  DISPATCH_OUTPUT="$HARNESS_SMOKE_ROOT/qwen-dispatch-output.json"
+  mkdir -p "$LOOP_LOG_DIR" "$KB_SESSIONS_DIR"
+else
+  STOP_FILE="/home/slimy/.harness-stop"
+  LOOP_LOG_DIR="/home/slimy/harness-logs"
+  SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
+  SESSION_REPORT="/home/slimy/session-report.json"
+  FEATURE_LIST="/home/slimy/feature_list.json"
+  FAILED_APPROACHES="/home/slimy/failed-approaches.json"
+  NARRATIVE="/home/slimy/PROJECT_NARRATIVE.md"
+  STATE_FILE="/home/slimy/.sequencer-state.json"
+  KB_SESSIONS_DIR="/home/slimy/slimy-kb/raw/sessions"
+  ERROR_LOG="/home/slimy/sequencer-errors.log"
+  PENDING_APPROVAL="/home/slimy/pending-approval.json"
+  DISPATCH_OUTPUT="/tmp/qwen-dispatch-output.json"
+fi
+
 HARNESS_ENV_FILE="/home/slimy/.slimy-harness.env"
-SEQUNCER_DIR="/home/slimy/slimy-harness/sequencer"
-SESSION_REPORT="/home/slimy/session-report.json"
-FEATURE_LIST="/home/slimy/feature_list.json"
-FAILED_APPROACHES="/home/slimy/failed-approaches.json"
-NARRATIVE="/home/slimy/PROJECT_NARRATIVE.md"
-STATE_FILE="/home/slimy/.sequencer-state.json"
-KB_SESSIONS_DIR="/home/slimy/slimy-kb/raw/sessions"
 QWEN_URL="${QWEN_URL:-http://localhost:11434/api/generate}"
 QWEN_MODEL="${QWEN_MODEL:-qwen2.5:3b}"
-ERROR_LOG="/home/slimy/sequencer-errors.log"
-PENDING_APPROVAL="/home/slimy/pending-approval.json"
-DISPATCH_OUTPUT="/tmp/qwen-dispatch-output.json"
 DISPATCH_RESULT=""
 
-if [ -f "$HARNESS_ENV_FILE" ]; then
+if [ "${HARNESS_SKIP_ENV_FILE:-}" != "1" ] && [ -f "$HARNESS_ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1090
   . "$HARNESS_ENV_FILE"
