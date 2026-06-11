@@ -75,3 +75,57 @@ Safety invariants:
 
 This helper is policy-only and read-only. It is not wired into goal-runner
 or auto-sequence. Live routing remains disabled and requires operator QA.
+
+## Phase 4 — Proof-Only Route Decision Recorder
+
+A proof-only, audit-only wrapper that records routing decisions into a
+proof directory is available:
+
+```bash
+bash ops/local-model-routing/record-route-decision.sh \
+  --proof-dir "$PROOF/route-recording-samples/allow-route-hint" \
+  --task route_hint \
+  --risk LOW \
+  --touches none \
+  --machine nuc1
+```
+
+Supported options:
+
+- `--proof-dir`: required; proof directory (created with mode 0700 if missing)
+- `--policy`: defaults to `config/local-model-routing.policy.json`
+- `--task`: required task name
+- `--risk`: `LOW` (default), `MEDIUM`, or `HIGH`
+- `--touches`: comma-separated surface list (e.g. `secrets,caddy`)
+- `--machine`: `nuc1` (default) or `nuc2`
+- `-h`, `--help`: show usage
+
+The recorder runs the committed policy validator and the committed
+dry-run helper, then writes the following proof artifacts into
+`--proof-dir`:
+
+- `route-decision.txt` — key/value decision output from the dry-run helper
+- `route-decision.json` — JSON decision output from the dry-run helper
+- `route-decision.env` — shell-safe `LOCAL_MODEL_*` key/value lines
+- `route-decision-command.txt` — exact recorded command and metadata
+- `route-decision-policy-validator.txt` — full validator stdout/stderr
+
+The recorder is fail-closed. If the policy validator or the dry-run
+helper fails, the recorder writes whatever proof artifacts it can and
+exits non-zero so the caller can branch on the result.
+
+Safety invariants (in addition to the Phase 3 invariants):
+
+- Does not call Ollama, pull models, or open network sockets.
+- Does not use `curl`, `wget`, `nc`, or `socat`.
+- Refuses obviously dangerous `--proof-dir` targets such as `/etc`,
+  `/`, `/bin`, `/sbin`, `/usr`, `/var`, `/root`, or `/boot`.
+- Creates the proof directory with mode 0700 if it does not exist.
+- Does not wire into goal-runner, auto-sequence, notifier, Caddy, DNS,
+  cron, systemd, or tmux.
+- Does not read `.env`, secrets, or Discord webhook URLs.
+- Does not send Discord messages.
+
+This recorder is proof-only and audit-only. It is not wired into
+goal-runner or auto-sequence. Live routing remains disabled and
+requires operator QA.
