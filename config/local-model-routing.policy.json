@@ -1,0 +1,165 @@
+{
+  "status": "policy_only_not_live",
+  "acceptedByOperator": false,
+  "defaultBehavior": {
+    "localModelsAreAdvisoryOnly": true,
+    "harnessQaRemainsSourceOfTruth": true,
+    "noProductionEditsByLocalModels": true,
+    "noFinalQaByLocalModels": true,
+    "noSecretsByLocalModels": true,
+    "noDiscordWebhookAccessByLocalModels": true
+  },
+  "machines": {
+    "nuc1": {
+      "role": [
+        "primary_production",
+        "local_model_helper"
+      ],
+      "ollama": {
+        "endpoint": "http://127.0.0.1:11434",
+        "allowedModels": {
+          "qwen2.5:1.5b": {
+            "enabled": true,
+            "hotPathDecision": "tiny_helper_only",
+            "hotPathMaxOutputTokens": 8,
+            "hotPathMaxWallSeconds": 10,
+            "deniedTasks": [
+              "code_generation",
+              "production_editing",
+              "final_qa",
+              "secret_handling",
+              "discord_notification",
+              "caddy_dns_systemd_cron_changes",
+              "database_migration",
+              "large_summarization"
+            ],
+            "allowedTinyHelperTasks": [
+              "route_hint",
+              "risk_label",
+              "warn_fail_detect",
+              "dirty_state_label",
+              "short_status_label"
+            ],
+            "maxOutputTokensHotPath": 8,
+            "maxWallSecondsHotPath": 10
+          },
+          "qwen3:4b": {
+            "enabled": false,
+            "decision": "do_not_use_hot_path",
+            "deniedTasks": [
+              "hot_path_routing",
+              "code_generation",
+              "production_editing",
+              "final_qa",
+              "secret_handling",
+              "large_summarization"
+            ]
+          },
+          "Hermes-3-Llama-3.1-8B": {
+            "enabled": false,
+            "decision": "do_not_use_pending_backend_model_identification"
+          }
+        },
+        "notes": {
+          "port8080Identity": "Caddy web server, not Hermes model endpoint"
+        }
+      },
+      "hermes": {
+        "enabled": false,
+        "status": "unknown_model_backend",
+        "decision": "do_not_route_until_identified",
+        "port8080Identity": "caddy_not_hermes"
+      }
+    },
+    "nuc2": {
+      "role": [
+        "report_rendering_worker",
+        "relay_only_worker"
+      ],
+      "localInference": {
+        "enabled": false,
+        "decision": "do_not_use_hot_path",
+        "optionalFutureBackgroundModel": "qwen2.5:0.5b",
+        "deniedTasks": [
+          "hot_path_routing",
+          "code_generation",
+          "production_editing",
+          "final_qa",
+          "secret_handling",
+          "discord_webhook_storage"
+        ]
+      }
+    }
+  },
+  "remoteModelRouting": {
+    "ChatGPT": {
+      "primaryUseCases": [
+        "project_management",
+        "prompt_design",
+        "strategy",
+        "debugging_plan"
+      ]
+    },
+    "Claude": {
+      "primaryUseCases": [
+        "careful_implementation",
+        "review",
+        "proof_discipline",
+        "high_risk_changes"
+      ]
+    },
+    "Codex": {
+      "primaryUseCases": [
+        "heavy_coding",
+        "repo_edits",
+        "temporary_overflow_bridge"
+      ]
+    },
+    "Gemini": {
+      "primaryUseCases": [
+        "long_context_research_optional"
+      ]
+    }
+  },
+  "routingRules": {
+    "highRiskTasks": {
+      "localModelAllowed": false
+    },
+    "protectedSurfaces": {
+      "localModelAllowed": false,
+      "surfaces": [
+        "secrets",
+        "caddy",
+        "dns",
+        "systemd",
+        "cron",
+        "tmux",
+        "discord_webhook",
+        "auth",
+        "production_routing"
+      ]
+    },
+    "tinyClassification": {
+      "localModelAllowed": true,
+      "target": "nuc1:qwen2.5:1.5b",
+      "maxOutputTokens": 8
+    },
+    "warnFailDetect": {
+      "localModelAllowed": true,
+      "target": "nuc1:qwen2.5:1.5b",
+      "maxOutputTokens": 8
+    },
+    "resultMdDraft": {
+      "localModelAllowed": true,
+      "target": "nuc1:qwen2.5:1.5b",
+      "mode": "batch_only",
+      "requiresReview": true
+    }
+  },
+  "proofRequirements": {
+    "localModelDecisionMustBeLogged": true,
+    "localModelOutputIsAdvisory": true,
+    "manualQaRequiredBeforeLiveRouting": true,
+    "closeoutRequiredBeforeAcceptedState": true
+  }
+}
