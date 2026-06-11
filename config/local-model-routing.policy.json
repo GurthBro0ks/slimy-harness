@@ -86,7 +86,8 @@
           "production_editing",
           "final_qa",
           "secret_handling",
-          "discord_webhook_storage"
+          "discord_webhook_storage",
+          "large_summarization"
         ]
       }
     }
