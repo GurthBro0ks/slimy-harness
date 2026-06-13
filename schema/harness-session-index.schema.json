@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slimyai.local/schemas/harness-session-index.schema.json",
+  "title": "Harness Session Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source_machine",
+    "sessions"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "harness-session-index/v1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_machine": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/session_summary"
+      }
+    }
+  },
+  "$defs": {
+    "safe_value": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "safe_string_array": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "session_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_id",
+        "phase",
+        "result",
+        "status",
+        "project",
+        "repo",
+        "feature_id",
+        "machine",
+        "nuc",
+        "commit",
+        "head",
+        "pushed",
+        "proof_dir",
+        "report_url",
+        "timestamp",
+        "started_at",
+        "finished_at",
+        "duration_minutes",
+        "manual_qa_status",
+        "discord_sent",
+        "notify_mode",
+        "dedupe_result",
+        "services_restarted",
+        "caddy_changed",
+        "dns_changed",
+        "cron_changed",
+        "timer_changed",
+        "tmux_changed",
+        "secrets_printed",
+        "webhook_values_printed",
+        "warnings",
+        "failures",
+        "next_action",
+        "source_report"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "phase": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "result": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "status": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "project": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "repo": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "feature_id": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "machine": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "nuc": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "commit": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "head": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "pushed": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "proof_dir": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "report_url": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "started_at": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "finished_at": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "duration_minutes": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "manual_qa_status": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "discord_sent": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "notify_mode": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "dedupe_result": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "services_restarted": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "caddy_changed": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "dns_changed": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "cron_changed": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "timer_changed": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "tmux_changed": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "secrets_printed": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "webhook_values_printed": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "warnings": {
+          "$ref": "#/$defs/safe_string_array"
+        },
+        "failures": {
+          "$ref": "#/$defs/safe_string_array"
+        },
+        "next_action": {
+          "$ref": "#/$defs/safe_value"
+        },
+        "source_report": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
