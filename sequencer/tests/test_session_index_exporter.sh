@@ -65,6 +65,7 @@ assert sessions["with-date"]["created_at_source"] == "timestamp"
 assert sessions["with-date"]["report_url"] == "https://harness.slimyai.xyz/reports/sessions/with-date.json"
 assert sessions["missing-date"]["created_at"] == "2026-06-14T12:34:56Z"
 assert sessions["missing-date"]["created_at_source"] == "file_mtime"
+assert sessions["missing-date"]["report_url"] == "https://harness.slimyai.xyz/reports/sessions/missing-date.json"
 
 for session in index["sessions"]:
     dt.datetime.fromisoformat(session["created_at"].replace("Z", "+00:00"))

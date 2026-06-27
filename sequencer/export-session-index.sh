@@ -106,6 +106,7 @@ schema_path = Path(os.environ["HARNESS_SESSION_INDEX_SCHEMA"])
 sessions_dir = Path(os.environ["HARNESS_SESSION_INDEX_SESSIONS_DIR"])
 output_env = os.environ.get("HARNESS_SESSION_INDEX_OUTPUT", "")
 output_path = Path(output_env) if output_env else None
+report_base_url = os.environ.get("HARNESS_REPORT_BASE_URL", "https://harness.slimyai.xyz").rstrip("/")
 
 SENSITIVE_NAMES = (
     "BOT_" + "TOKEN",
@@ -306,6 +307,9 @@ def file_mtime_iso(path):
 
 
 def session_summary(path, data):
+    source_report = safe_report_name(path)
+    explicit_report_url = first_scalar(data, [("report_url",), ("REPORT_URL",), ("url",)])
+    report_url = explicit_report_url or f"{report_base_url}/reports/sessions/{source_report}"
     created_at, created_at_source = first_date(data, [
         ("created_at",),
         ("CREATED_AT",),
@@ -389,7 +393,7 @@ def session_summary(path, data):
         "head": first_scalar(data, [("head",), ("HEAD",), ("commit_head",)]),
         "pushed": boolish(data, [("pushed",), ("PUSHED",)]),
         "proof_dir": first_path_scalar(data, [("proof_dir",), ("PROOF_DIR",), ("proof", "dir")]),
-        "report_url": first_scalar(data, [("report_url",), ("REPORT_URL",), ("url",)]),
+        "report_url": report_url,
         "timestamp": first_scalar(data, [("timestamp",), ("TIMESTAMP",), ("created_at",)]) or created_at,
         "created_at": created_at,
         "created_at_source": created_at_source,
@@ -411,7 +415,7 @@ def session_summary(path, data):
         "warnings": warnings[:25],
         "failures": failures[:25],
         "next_action": next_action,
-        "source_report": safe_report_name(path),
+        "source_report": source_report,
     }
 
 

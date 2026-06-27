@@ -500,6 +500,11 @@ R_COMMIT="$(python3 -c "import json; d=json.load(open('$RESOLVED_FILE')); print(
 R_BRANCH="$(python3 -c "import json; d=json.load(open('$RESOLVED_FILE')); print(d.get('branch',''))" 2>/dev/null || echo "")"
 R_SUMMARY="$(python3 -c "import json; d=json.load(open('$RESOLVED_FILE')); print(d.get('summary',''))" 2>/dev/null || echo "")"
 
+REPORT_SLUG="$(printf '%s' "$PROOF_BASENAME" | tr -c 'a-zA-Z0-9.-' '_' | head -c 120)"
+REPORT_BASENAME="report-proof-${REPORT_SLUG}.json"
+ARCHIVE_PATH="${KB_SESSIONS_DIR}/${REPORT_BASENAME}"
+PUBLIC_REPORT_URL="${HARNESS_REPORT_BASE_URL:-https://harness.slimyai.xyz}/reports/sessions/${REPORT_BASENAME}"
+
 TMP_REPORT="$(mktemp -t session-report-from-proof.XXXXXX.json)"
 python3 > "$TMP_REPORT" << PYEOF
 import json, os
@@ -520,6 +525,7 @@ branch = "$R_BRANCH"
 task_title = "$R_TASK_TITLE"
 now = "$NOW_ISO"
 basename = "$PROOF_BASENAME"
+report_url = "$PUBLIC_REPORT_URL"
 
 def parse_result_fields(path):
     fields = {}
@@ -635,8 +641,14 @@ report = {
     "kb_learnings": [],
     "duration_minutes": 0,
     "timestamp": now,
+    "created_at": now,
+    "archived_at": now,
     "proof_dir": proof_dir,
     "proof_basename": basename,
+    "report_url": report_url,
+    "discord_sent": False,
+    "notify_mode": "runtime" if "$DRY_RUN" == "0" else "dry-run",
+    "dedupe_result": "not_checked",
     "generated_by": "notify-proof-dir-complete.sh"
 }
 
@@ -649,16 +661,23 @@ python3 -c "import json; json.load(open('$TMP_REPORT')); print('report valid')" 
   exit 65
 }
 
-REPORT_SLUG="$(printf '%s' "$PROOF_BASENAME" | tr -c 'a-zA-Z0-9.-' '_' | head -c 120)"
-REPORT_BASENAME="report-proof-${REPORT_SLUG}.json"
-ARCHIVE_PATH="${KB_SESSIONS_DIR}/${REPORT_BASENAME}"
-
 if [[ -f "$ARCHIVE_PATH" ]]; then
   log "Archive already exists: $ARCHIVE_PATH (reusing for dedupe)"
 else
   mkdir -p "$KB_SESSIONS_DIR"
   cp "$TMP_REPORT" "$ARCHIVE_PATH"
   log "Archived session report to $ARCHIVE_PATH"
+fi
+
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  INDEX_OUTPUT="${HARNESS_SESSION_INDEX_OUTPUT:-${KB_SESSIONS_DIR}/harness-session-index.json}"
+  EXPORTER="$SEQUENCER_DIR/export-session-index.sh"
+  if [[ -f "$EXPORTER" ]]; then
+    bash "$EXPORTER" --sessions-dir "$KB_SESSIONS_DIR" --output "$INDEX_OUTPUT" 2>&1 \
+      || warn "Session index regeneration failed after archive (non-fatal)"
+  else
+    warn "Session index exporter not found at $EXPORTER"
+  fi
 fi
 
 HARNESS_ENV_FILE="${HARNESS_ENV_FILE:-/home/slimy/.slimy-harness.env}"
