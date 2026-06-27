@@ -163,6 +163,29 @@ def safe_scalar(value, default=None):
     return default
 
 
+def safe_path_string(value):
+    if value is MISSING:
+        return None
+    text = safe_scalar(value, None)
+    if not isinstance(text, str) or not text:
+        return text
+    if "://" in text:
+        return text
+    parts = re.split(r"([;\s,]+)", text)
+    sanitized = []
+    changed = False
+    for part in parts:
+        if not part or re.fullmatch(r"[;\s,]+", part):
+            sanitized.append(part)
+            continue
+        if part.startswith("/home/") or part.startswith("/opt/") or part.startswith("/tmp/"):
+            sanitized.append(Path(part).name or "[path]")
+            changed = True
+        else:
+            sanitized.append(part)
+    return "".join(sanitized) if changed else text
+
+
 def safe_text_list(value):
     if value is MISSING or value is None:
         return []
@@ -208,6 +231,13 @@ def first_scalar(data, paths, default=None):
     return safe_scalar(find_value(data, paths), default)
 
 
+def first_path_scalar(data, paths, default=None):
+    value = find_value(data, paths)
+    if value is MISSING:
+        return default
+    return safe_path_string(value)
+
+
 def boolish(data, paths):
     value = find_value(data, paths)
     if value is MISSING:
@@ -246,7 +276,57 @@ def load_report(path):
     return data
 
 
+def iso_utc(value):
+    text = safe_scalar(value, None)
+    if not isinstance(text, str) or not text:
+        return None
+    normalized = text.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = _dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_dt.timezone.utc)
+    return parsed.astimezone(_dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def first_date(data, paths):
+    for path in paths:
+        value = find_value(data, [path])
+        parsed = iso_utc(value)
+        if parsed:
+            return parsed, ".".join(path)
+    return None, None
+
+
+def file_mtime_iso(path):
+    return _dt.datetime.fromtimestamp(path.stat().st_mtime, _dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def session_summary(path, data):
+    created_at, created_at_source = first_date(data, [
+        ("created_at",),
+        ("CREATED_AT",),
+        ("reported_at",),
+        ("REPORTED_AT",),
+        ("archived_at",),
+        ("ARCHIVED_AT",),
+        ("timestamp",),
+        ("TIMESTAMP",),
+        ("finished_at",),
+        ("FINISHED_AT",),
+        ("started_at",),
+        ("STARTED_AT",),
+        ("metadata", "created_at"),
+        ("metadata", "timestamp"),
+        ("result", "timestamp"),
+    ])
+    if created_at is None:
+        created_at = file_mtime_iso(path)
+        created_at_source = "file_mtime"
+
     phase = first_scalar(data, [
         ("phase",),
         ("PHASE",),
@@ -301,16 +381,18 @@ def session_summary(path, data):
         "result": result,
         "status": status,
         "project": first_scalar(data, [("project",), ("PROJECT",), ("target_project",)]),
-        "repo": first_scalar(data, [("repo",), ("repository",), ("TARGET_REPO",), ("target_repo",)]),
+        "repo": first_path_scalar(data, [("repo",), ("repository",), ("TARGET_REPO",), ("target_repo",)]),
         "feature_id": first_scalar(data, [("feature_id",), ("FEATURE_ID",), ("feature", "id")]),
         "machine": first_scalar(data, [("machine",), ("MACHINE",), ("target_machine",), ("TARGET_MACHINE",)]),
         "nuc": first_scalar(data, [("nuc",), ("NUC",), ("machine", "nuc")]),
         "commit": first_scalar(data, [("commit",), ("COMMIT",), ("new_commit",), ("NEW_COMMIT_SHA",)]),
         "head": first_scalar(data, [("head",), ("HEAD",), ("commit_head",)]),
         "pushed": boolish(data, [("pushed",), ("PUSHED",)]),
-        "proof_dir": first_scalar(data, [("proof_dir",), ("PROOF_DIR",), ("proof", "dir")]),
+        "proof_dir": first_path_scalar(data, [("proof_dir",), ("PROOF_DIR",), ("proof", "dir")]),
         "report_url": first_scalar(data, [("report_url",), ("REPORT_URL",), ("url",)]),
-        "timestamp": first_scalar(data, [("timestamp",), ("TIMESTAMP",), ("created_at",)]),
+        "timestamp": first_scalar(data, [("timestamp",), ("TIMESTAMP",), ("created_at",)]) or created_at,
+        "created_at": created_at,
+        "created_at_source": created_at_source,
         "started_at": first_scalar(data, [("started_at",), ("STARTED_AT",), ("start_time",)]),
         "finished_at": first_scalar(data, [("finished_at",), ("FINISHED_AT",), ("end_time",)]),
         "duration_minutes": first_scalar(data, [("duration_minutes",), ("DURATION_MINUTES",), ("duration", "minutes")]),
@@ -356,7 +438,7 @@ def reject_sensitive_output(index):
 
 
 def structural_validate(index):
-    required_top = ("schema_version", "generated_at", "source_machine", "sessions")
+    required_top = ("schema_version", "generated_at", "generated_by", "source_machine", "session_count", "sessions")
     for key in required_top:
         if key not in index:
             raise SystemExit(f"ERROR: missing top-level key: {key}")
@@ -364,6 +446,11 @@ def structural_validate(index):
         raise SystemExit("ERROR: unexpected schema_version")
     if not isinstance(index["sessions"], list):
         raise SystemExit("ERROR: sessions is not a list")
+    if index["session_count"] != len(index["sessions"]):
+        raise SystemExit("ERROR: session_count does not match sessions length")
+    for session in index["sessions"]:
+        if not isinstance(session, dict) or not iso_utc(session.get("created_at")):
+            raise SystemExit("ERROR: session missing valid created_at")
     with schema_path.open("r", encoding="utf-8") as fh:
         json.load(fh)
 
@@ -381,7 +468,9 @@ for path in sorted(sessions_dir.iterdir(), key=lambda p: p.name):
 index = {
     "schema_version": "harness-session-index/v1",
     "generated_at": _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    "generated_by": "sequencer/export-session-index.sh",
     "source_machine": socket.gethostname(),
+    "session_count": len(sessions),
     "sessions": sessions,
 }
 

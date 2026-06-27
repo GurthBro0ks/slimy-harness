@@ -7,7 +7,9 @@
   "required": [
     "schema_version",
     "generated_at",
+    "generated_by",
     "source_machine",
+    "session_count",
     "sessions"
   ],
   "properties": {
@@ -19,9 +21,17 @@
       "type": "string",
       "format": "date-time"
     },
+    "generated_by": {
+      "type": "string",
+      "const": "sequencer/export-session-index.sh"
+    },
     "source_machine": {
       "type": "string",
       "minLength": 1
+    },
+    "session_count": {
+      "type": "integer",
+      "minimum": 0
     },
     "sessions": {
       "type": "array",
@@ -65,6 +75,8 @@
         "proof_dir",
         "report_url",
         "timestamp",
+        "created_at",
+        "created_at_source",
         "started_at",
         "finished_at",
         "duration_minutes",
@@ -130,6 +142,14 @@
         },
         "timestamp": {
           "$ref": "#/$defs/safe_value"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_at_source": {
+          "type": "string",
+          "minLength": 1
         },
         "started_at": {
           "$ref": "#/$defs/safe_value"
