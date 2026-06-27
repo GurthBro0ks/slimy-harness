@@ -78,6 +78,11 @@
         "details": {
           "type": "string",
           "description": "Truth gate output summary."
+        },
+        "label": {
+          "type": "string",
+          "enum": ["TESTS PASS", "TESTS FAIL", "TESTS NOT RUN", "SMOKE ONLY"],
+          "description": "Display label for report UIs. Smoke-only or not-run validation must not be labeled as TESTS FAIL."
         }
       }
     },

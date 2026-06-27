@@ -18,6 +18,7 @@
   "tests": {
     "ran": true,
     "passed": true,
+    "label": "TESTS PASS",
     "details": "validate-next.sh tested with valid and invalid inputs. bash -n passes on all shell scripts. JSON schemas validate."
   },
   "blockers": [],

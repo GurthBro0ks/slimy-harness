@@ -134,6 +134,46 @@ def render_kv(label: str, value: Any) -> str:
     return f"<dt>{esc(label)}</dt><dd>{esc(first_text(value))}</dd>"
 
 
+def boolish(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "yes", "true", "pass", "passed", "success"}:
+            return True
+        if lowered in {"0", "no", "false", "fail", "failed", "none"}:
+            return False
+    return None
+
+
+def report_test_label(report: Dict[str, Any]) -> str:
+    tests = report.get("tests", {})
+    if not isinstance(tests, dict):
+        tests = {}
+
+    explicit_label = str(tests.get("label") or tests.get("status_label") or "").strip().upper()
+    if explicit_label in {"SMOKE ONLY", "TESTS NOT RUN", "TESTS FAIL", "TESTS PASS"}:
+        return explicit_label
+
+    details = first_text(tests.get("details", ""))
+    validation = first_text(get_in(report, ["validation"], ""))
+    combined = f"{details}\n{validation}".upper().replace("-", " ").replace("_", " ")
+
+    if "SMOKE ONLY" in combined or "SMOKE TEST" in combined or "ROUTE SMOKE" in combined:
+        return "SMOKE ONLY"
+
+    ran = boolish(tests.get("ran"))
+    passed = boolish(tests.get("passed"))
+    if ran is False:
+        return "TESTS NOT RUN"
+    if ran is True and passed is True:
+        return "TESTS PASS"
+    if ran is True and passed is False:
+        return "TESTS FAIL"
+
+    return "TESTS NOT RUN"
+
+
 # ---- main render -----------------------------------------------------------
 
 def build_html(report: Dict[str, Any], report_url: Optional[str]) -> str:
@@ -144,6 +184,7 @@ def build_html(report: Dict[str, Any], report_url: Optional[str]) -> str:
     summary = first_text(report.get("summary", ""))
     work_done = first_text(report.get("work_done", ""))
     validation = first_text(get_in(report, ["validation"], report.get("tests", {})))
+    test_label = report_test_label(report)
     blockers = report.get("blockers", [])
     failed_approaches = report.get("failed_approaches", [])
     next_actions = report.get("next_actions", report.get("recommendation"))
@@ -206,6 +247,7 @@ def build_html(report: Dict[str, Any], report_url: Optional[str]) -> str:
     meta_pairs = [
         ("feature_id", report.get("feature_id", "")),
         ("status", f"{emoji} {status}"),
+        ("test label", test_label),
         ("agent", report.get("agent", "")),
         ("nuc", report.get("nuc", "")),
         ("repo / project", report.get("project", report.get("repo", ""))),
@@ -229,6 +271,7 @@ def build_html(report: Dict[str, Any], report_url: Optional[str]) -> str:
     # Body sections
     summary_html = render_block("Summary", f"<p>{esc(summary) or '<span class=\"muted\">(none)</span>'}</p>")
     work_done_html = render_block("Work Done", f"<p>{esc(work_done) or '<span class=\"muted\">(none)</span>'}</p>")
+    test_label_html = render_block("Test Label", f"<p><span class=\"test-label\">{esc(test_label)}</span></p>")
     validation_html = render_block("Validation", f"<p>{esc(validation) or '<span class=\"muted\">(none)</span>'}</p>")
     blockers_section = render_block("Blockers", blockers_html)
     failed_section = render_block("Failed Approaches (SkillOpt buffer)", failed_html)
@@ -311,6 +354,17 @@ def build_html(report: Dict[str, Any], report_url: Optional[str]) -> str:
   ul.bullets li {{ margin: 0.15rem 0; }}
   .muted {{ color: var(--muted); }}
   .small {{ font-size: 0.8rem; }}
+  .test-label {{
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 4px;
+    background: var(--panel-2);
+    padding: 0.2rem 0.45rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+  }}
   code {{ background: var(--panel-2); padding: 0.05rem 0.3rem; border-radius: 4px; }}
   pre.raw {{
     background: var(--panel-2);
@@ -343,6 +397,7 @@ def build_html(report: Dict[str, Any], report_url: Optional[str]) -> str:
 {link_section}
 {summary_html}
 {work_done_html}
+{test_label_html}
 {validation_html}
 {blockers_section}
 {failed_section}

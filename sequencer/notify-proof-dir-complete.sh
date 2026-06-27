@@ -503,6 +503,7 @@ R_SUMMARY="$(python3 -c "import json; d=json.load(open('$RESOLVED_FILE')); print
 TMP_REPORT="$(mktemp -t session-report-from-proof.XXXXXX.json)"
 python3 > "$TMP_REPORT" << PYEOF
 import json, os
+import re
 
 proof_dir = "$PROOF_DIR"
 result_file = "$RESULT_FILE"
@@ -520,11 +521,96 @@ task_title = "$R_TASK_TITLE"
 now = "$NOW_ISO"
 basename = "$PROOF_BASENAME"
 
+def parse_result_fields(path):
+    fields = {}
+    if not os.path.isfile(path):
+        return fields
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if re.fullmatch(r"[A-Z0-9_]+", key):
+                    fields[key] = value.strip()
+    except OSError:
+        return fields
+    return fields
+
+def classify_tests(path, status_value):
+    fields = parse_result_fields(path)
+    validation = fields.get("VALIDATION", "")
+    manual_qa = fields.get("MANUAL_QA_STATUS", "")
+    result = fields.get("RESULT", status_value)
+    summary_field = fields.get("SUMMARY", "")
+    combined = " ".join([validation, manual_qa, result, summary_field]).lower()
+    normalized = re.sub(r"[-_]+", " ", combined)
+
+    if re.search(r"\bsmoke only\b|\broute smoke\b|\bsmoke\b", normalized):
+        return {
+            "ran": False,
+            "passed": False,
+            "label": "SMOKE ONLY",
+            "details": "Proof dir adapter: smoke-only validation from RESULT.md metadata",
+        }
+
+    if re.search(r"tests? not run|no tests run|not required|read only|discovery only", normalized):
+        return {
+            "ran": False,
+            "passed": False,
+            "label": "TESTS NOT RUN",
+            "details": "Proof dir adapter: tests were not run according to RESULT.md metadata",
+        }
+
+    fail_markers = r"test fail|tests fail|lint fail|typecheck fail|build fail|validation fail"
+    if re.search(fail_markers, normalized):
+        return {
+            "ran": True,
+            "passed": False,
+            "label": "TESTS FAIL",
+            "details": "Proof dir adapter: failing test/validation command evidence from RESULT.md metadata",
+        }
+
+    ran_markers = (
+        r"lint pass|typecheck pass|test pass|tests pass|build pass|"
+        r"focused .* pass|shell syntax pass|validate .* pass|validation .* pass"
+    )
+    tests_ran = bool(re.search(ran_markers, normalized))
+    result_status = str(result or status_value or "").lower()
+    status_passed = result_status in ("completed", "pass", "passed", "success", "ok", "done")
+
+    if tests_ran:
+        return {
+            "ran": True,
+            "passed": status_passed,
+            "label": "TESTS PASS" if status_passed else "TESTS FAIL",
+            "details": "Proof dir adapter: test/validation command evidence from RESULT.md metadata",
+        }
+
+    if status_passed:
+        return {
+            "ran": False,
+            "passed": False,
+            "label": "TESTS NOT RUN",
+            "details": "Proof dir adapter: proof passed, but no test-run evidence was found in RESULT.md metadata",
+        }
+
+    return {
+        "ran": True,
+        "passed": False,
+        "label": "TESTS FAIL",
+        "details": "Proof dir adapter: failing RESULT.md status",
+    }
+
 files_changed = []
 for f in os.listdir(proof_dir):
     fp = os.path.join(proof_dir, f)
     if os.path.isfile(fp) and f not in ("RESULT.md", "harness-metadata.json", "harness-metadata.resolved.json"):
         files_changed.append(f)
+
+tests = classify_tests(result_file, status)
 
 report = {
     "session_id": now,
@@ -543,7 +629,7 @@ report = {
     "status": status or "completed",
     "summary": (summary or "Agent completed.")[:500],
     "changes": files_changed[:20],
-    "tests": {"ran": True, "passed": status in ("completed", "pass"), "details": "Proof dir adapter: status from RESULT.md + metadata"},
+    "tests": tests,
     "blockers": [],
     "recommendation": {"next_feature_id": None, "reasoning": "", "risk_notes": ""},
     "kb_learnings": [],
