@@ -92,6 +92,22 @@ report_count="$(find "$sessions" -maxdepth 1 -type f -name 'report-proof-*.json'
 assert_index_shape "$index" 1
 pass "archive-only is idempotent"
 
+sed -i 's/^VALIDATION=.*/VALIDATION=route_smoke_pass/' "$proof_one/RESULT.md"
+archive_proof "$proof_one" "$sessions" "$index"
+report_count="$(find "$sessions" -maxdepth 1 -type f -name 'report-proof-*.json' | wc -l | tr -d ' ')"
+[[ "$report_count" == "1" ]] || fail "archive-only update duplicated report"
+python3 - "$sessions" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+reports = list(Path(sys.argv[1]).glob("report-proof-*.json"))
+assert len(reports) == 1
+data = json.loads(reports[0].read_text())
+assert data["tests"]["label"] == "SMOKE ONLY", data["tests"]
+PY
+pass "archive-only updates existing report in place"
+
 proof_smoke="$TEMP/proof_smoke_only_20260627T000001Z"
 write_proof "$proof_smoke" "archive-smoke-fixture" "PASS" "route_smoke_pass;logged_out_routes_checked"
 archive_proof "$proof_smoke" "$sessions" "$index"

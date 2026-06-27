@@ -505,7 +505,13 @@ PY
 python3 -c "import json; json.load(open('$TMP_REPORT')); print('REPORT_VALID=yes')" >/dev/null
 
 if [[ -f "$ARCHIVE_PATH" ]]; then
-  log "Archive already exists: $ARCHIVE_PATH (reusing)"
+  if cmp -s "$TMP_REPORT" "$ARCHIVE_PATH"; then
+    log "Archive already exists: $ARCHIVE_PATH (reusing)"
+  else
+    cp "$TMP_REPORT" "$ARCHIVE_PATH"
+    chmod 0600 "$ARCHIVE_PATH" 2>/dev/null || true
+    log "Updated session report at $ARCHIVE_PATH"
+  fi
 else
   mkdir -p "$KB_SESSIONS_DIR"
   cp "$TMP_REPORT" "$ARCHIVE_PATH"
