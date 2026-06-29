@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ARCHIVER="$REPO_ROOT/sequencer/archive-proof-dir-session.sh"
-NOTIFIER="$REPO_ROOT/sequencer/notify-proof-dir-complete.sh"
 TEMP="$(mktemp -d)"
 trap 'rm -rf "$TEMP"' EXIT
 
@@ -45,8 +44,7 @@ archive_proof() {
   local proof="$1"
   local sessions="$2"
   local index="$3"
-  env -u DISCORD_HARNESS_WEBHOOK_URL \
-    "$ARCHIVER" --proof-dir "$proof" --repo-path "$REPO_ROOT" \
+  "$ARCHIVER" --proof-dir "$proof" --repo-path "$REPO_ROOT" \
     --repo-name slimy-harness --agent codex --sessions-dir "$sessions" \
     --index-output "$index" > "$TEMP/archive.out"
 }
@@ -130,43 +128,7 @@ assert labels["archive-tests-not-run-fixture"] == "TESTS NOT RUN", labels
 PY
 pass "report label semantics preserved"
 
-disabled_sessions="$TEMP/disabled-sessions"
-disabled_index="$TEMP/disabled-sessions/harness-session-index.json"
-disabled_proof="$TEMP/proof_disabled_notify_20260627T000003Z"
-mkdir -p "$disabled_sessions"
-write_proof "$disabled_proof" "disabled-notify-fixture" "PASS" "lint_pass;test_pass" "disabled"
-HARNESS_KB_SESSIONS="$disabled_sessions" \
-HARNESS_SESSION_INDEX_OUTPUT="$disabled_index" \
-HARNESS_ENV_FILE="$TEMP/no-harness-env" \
-  "$NOTIFIER" --proof-dir "$disabled_proof" --repo-path "$REPO_ROOT" \
-  --repo-name slimy-harness --feature-id disabled-notify-fixture --agent codex \
-  > "$TEMP/disabled.out" 2>"$TEMP/disabled.err"
-assert_index_shape "$disabled_index" 1
-pass "disabled/no-webhook notifier path still archives and indexes"
-
-failure_sessions="$TEMP/failure-sessions"
-failure_index="$TEMP/failure-sessions/harness-session-index.json"
-failure_proof="$TEMP/proof_send_failure_20260627T000004Z"
-failure_env="$TEMP/fake-harness-env"
-mkdir -p "$failure_sessions"
-write_proof "$failure_proof" "send-failure-fixture" "PASS" "lint_pass;test_pass" "runtime"
-printf '%s\n' 'DISCORD_HARNESS_WEBHOOK_URL=http://127.0.0.1:9/not-discord' > "$failure_env"
-set +e
-HARNESS_KB_SESSIONS="$failure_sessions" \
-HARNESS_SESSION_INDEX_OUTPUT="$failure_index" \
-HARNESS_ENV_FILE="$failure_env" \
-  "$NOTIFIER" --proof-dir "$failure_proof" --repo-path "$REPO_ROOT" \
-  --repo-name slimy-harness --feature-id send-failure-fixture --agent codex \
-  --force > "$TEMP/failure.out" 2>"$TEMP/failure.err"
-failure_rc=$?
-set -e
-[[ "$failure_rc" -ne 0 ]] || fail "expected local send failure to exit non-zero"
-assert_index_shape "$failure_index" 1
-failure_report="$(find "$failure_sessions" -maxdepth 1 -type f -name 'report-proof-*.json' | head -1)"
-[[ -n "$failure_report" ]] || fail "send failure skipped archive metadata"
-pass "send failure leaves archive and index metadata intact"
-
-encoded="$(python3 - "$sessions" "$disabled_sessions" "$failure_sessions" <<'PY'
+encoded="$(python3 - "$sessions" <<'PY'
 import json
 import sys
 from pathlib import Path

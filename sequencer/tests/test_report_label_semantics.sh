@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RENDERER="$REPO_ROOT/sequencer/render-session-report-html.py"
-NOTIFIER="$REPO_ROOT/sequencer/notify-proof-dir-complete.sh"
+ARCHIVER="$REPO_ROOT/sequencer/archive-proof-dir-session.sh"
 TEMP="$(mktemp -d)"
 trap 'rm -rf "$TEMP"' EXIT
 
@@ -81,10 +81,9 @@ RESULT=$result
 VALIDATION=$validation
 SUMMARY=Synthetic proof adapter fixture.
 EOF
-  HARNESS_KB_SESSIONS="$archive" \
-  HARNESS_ENV_FILE="$TEMP/no-env-file" \
-  "$NOTIFIER" --dry-run --proof-dir "$proof" --repo-path "$REPO_ROOT" --repo-name slimy-harness \
-    --feature-id report-label-semantics-fixture --agent opencode >/dev/null
+  "$ARCHIVER" --proof-dir "$proof" --repo-path "$REPO_ROOT" --repo-name slimy-harness \
+    --feature-id report-label-semantics-fixture --agent opencode \
+    --sessions-dir "$archive" --index-output "$archive/harness-session-index.json" >/dev/null
   local report
   report="$(find "$archive" -type f -name 'report-proof-*.json' | head -1)"
   [ -n "$report" ] || fail "proof adapter did not archive report for $expected"
