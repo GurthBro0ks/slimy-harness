@@ -129,3 +129,66 @@ Safety invariants (in addition to the Phase 3 invariants):
 This recorder is proof-only and audit-only. It is not wired into
 goal-runner or auto-sequence. Live routing remains disabled and
 requires operator QA.
+
+## Phase 5B — qwen2.5 Recovery Benchmark Tooling
+
+Phase 5 produced a local-only NUC1 WARN commit (`16d0207`) and a
+PM-recorded qwen2.5:1.5b micro-benchmark result, but the original
+benchmark proof directory was not recovered after the outage. The
+forensic record for that missing proof states:
+
+- original Phase 5 proof directory: missing
+- direct local benchmark proof recovered: no
+- PM-recorded Phase 5 result: `WARN`
+- PM-recorded benchmark verdict: `inconclusive`
+- qwen2.5 decision: `do_not_wire_into_harness`
+
+Phase 5B keeps qwen2.5 unavailable for harness routing and adds a
+recovery benchmark helper that can create complete deferred proof
+artifacts without calling Ollama:
+
+```bash
+bash ops/local-model-routing/benchmark-qwen25-tiny.sh \
+  --proof-dir "$PROOF/benchmark" \
+  --defer-model-run \
+  --defer-reason "operator deferred real NUC1 benchmark"
+```
+
+Deferred mode must be used for recovery/operator QA that is not a real
+NUC1 benchmark. It writes:
+
+- `ollama-command.txt`
+- `ollama-list.txt`
+- `model-presence.txt`
+- `benchmark-output.txt`
+- `benchmark-summary.json`
+- `benchmark-summary.txt`
+- `benchmark-subset-summary.txt`
+- `artifact-presence.txt`
+
+Required deferred fields:
+
+- `BENCHMARK_RUN=no`
+- `BENCHMARK_VERDICT=deferred_until_nuc1_online`
+- `QWEN25_RECOMMENDATION=none`
+- `QWEN25_DECISION=do_not_wire_into_harness`
+- `MODELS_PULLED=no`
+- `OLLAMA_PULL_ATTEMPTED=no`
+- `OLLAMA_CALLED=no`
+- `LIVE_ROUTING_CHANGED=no`
+
+The helper also preserves a manual real-run mode for a later NUC1 Phase
+5B benchmark. That future run is proof-only, must be invoked directly by
+an operator, and still does not accept qwen2.5 for harness routing by
+itself. A separate operator QA decision is required before any future
+local model routing change.
+
+Safety invariants:
+
+- Deferred mode does not call Ollama and does not pull models.
+- The helper is not wired into goal-runner, auto-sequence, notifier,
+  Caddy, DNS, cron, systemd, or tmux.
+- No local model may handle secrets, Discord webhooks, production edits,
+  database migrations, or final QA.
+- qwen2.5 remains advisory/recovery-only and must not be wired into the
+  harness.
