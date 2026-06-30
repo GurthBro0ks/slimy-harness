@@ -14,11 +14,11 @@
   "entries": [
     {
       "schedule_id": "harness-watchdog-cron",
-      "description": "NUC1 harness watchdog cron job",
+      "description": "NUC1 harness route/auth regression watchdog cron candidate",
       "target_machine": "nuc1",
       "owner_scope": "user",
       "schedule_type": "user_crontab",
-      "source_path_or_unit": "watchdog.sh (user crontab)",
+      "source_path_or_unit": "sequencer/harness-route-auth-watchdog.sh --proof-dir <proof_dir>/harness-watchdog-cron",
       "managed_mode": "managed_candidate",
       "risk_level": "low",
       "approval_level": "owner",
@@ -29,11 +29,11 @@
       ],
       "backup_strategy_ref": "ops4b-cron-user-prechange-snapshot",
       "rollback_strategy_ref": "ops4b-cron-user-restore-last-known",
-      "current_inventory_ref": "current-schedule-inventory:user_crontab */15 * * * * /home/slimy/ned-clawd/scripts/watchdog.sh",
+      "current_inventory_ref": "dry-run-only:user_crontab */15 * * * * cd /home/slimy/slimy-harness && sequencer/harness-route-auth-watchdog.sh --proof-dir <proof_dir>/harness-watchdog-cron",
       "live_enable_allowed": false,
       "live_disable_allowed": false,
       "live_run_once_allowed": false,
-      "notes": "Dry-run only in Ops-4B. Candidate for narrow future managed scope."
+      "notes": "Dry-run only in Ops-4B. Manual watchdog is not installed as cron/timer; live scheduling requires separate explicit operator approval."
     },
     {
       "schedule_id": "nuc1-daily-report-timer",
