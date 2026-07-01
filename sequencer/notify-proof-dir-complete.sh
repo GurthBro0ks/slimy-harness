@@ -25,6 +25,7 @@ HARNESS_ROOT="${HARNESS_ROOT:-/home/slimy/slimy-harness}"
 SEQUENCER_DIR="${HARNESS_ROOT}/sequencer"
 KB_SESSIONS_DIR="${HARNESS_KB_SESSIONS:-/home/slimy/slimy-kb/raw/sessions}"
 SESSION_REPORT_DEFAULT="/home/slimy/session-report.json"
+PROOF_INDEX_DEFAULT="/home/slimy/harness-logs/state/proof-index.json"
 
 DRY_RUN=0
 FORCE=0
@@ -166,6 +167,45 @@ done
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [$SCRIPT_NAME] $*"; }
 warn() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [$SCRIPT_NAME] WARN: $*" >&2; }
+
+redact_diagnostic() {
+  sed -E \
+    -e 's#(https://discord(app)?\.com/api/webhooks/)[^[:space:]]+#\1[REDACTED]#g' \
+    -e 's#(password=)[^&[:space:]]+#\1[REDACTED]#gi' \
+    -e 's#(token|secret|key)=([^[:space:]]+)#\1=[REDACTED]#gi'
+}
+
+refresh_proof_index() {
+  local trace_store="${SEQUENCER_DIR}/trace-store.py"
+  local refresh_log
+  local refresh_rc=0
+  local refresh_tail
+
+  if [[ ! -f "$trace_store" ]]; then
+    warn "PROOF_INDEX_REFRESH=skipped reason=trace_store_missing path=$trace_store"
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "PROOF_INDEX_REFRESH=skipped reason=python3_missing"
+    return 0
+  fi
+
+  refresh_log="$(mktemp -t proof-index-refresh.XXXXXX.log)" || {
+    warn "PROOF_INDEX_REFRESH=skipped reason=tempfile_unavailable"
+    return 0
+  }
+
+  if python3 "$trace_store" >"$refresh_log" 2>&1; then
+    log "PROOF_INDEX_REFRESH=ok output=$PROOF_INDEX_DEFAULT"
+  else
+    refresh_rc=$?
+    refresh_tail="$(tail -5 "$refresh_log" 2>/dev/null | tr '\n' ' ' | redact_diagnostic || true)"
+    warn "PROOF_INDEX_REFRESH=warn rc=$refresh_rc output=$PROOF_INDEX_DEFAULT error=${refresh_tail:-none}"
+  fi
+
+  rm -f "$refresh_log"
+  return 0
+}
 
 if [[ -z "$PROOF_DIR" ]]; then
   echo "[$SCRIPT_NAME] ERROR: no proof directory given" >&2
@@ -679,6 +719,8 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     warn "Session index exporter not found at $EXPORTER"
   fi
 fi
+
+refresh_proof_index
 
 HARNESS_ENV_FILE="${HARNESS_ENV_FILE:-/home/slimy/.slimy-harness.env}"
 if [[ -f "$HARNESS_ENV_FILE" ]]; then
