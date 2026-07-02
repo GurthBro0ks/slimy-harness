@@ -15,6 +15,7 @@
 #  11. No test modifies /home/slimy/feature_list.json
 #  12. goal_runner.py missing causes non-zero exit
 #  13. HARNESS_GOAL_RUNNER_NOTIFY_MODE=runtime downgraded to disabled
+#  14. Auto-sequence startup prompt uses sanitized progress context helper
 #
 # Uses a stub goal_runner.py that records args. No real agent dispatch.
 set -uo pipefail
@@ -260,6 +261,15 @@ if [ "$RC" -eq 0 ] && grep -q '"--notify-mode", "disabled"' "$ARGS_FILE"; then
 else
   fail "notify-mode=runtime should be downgraded to disabled"
   cat "$ARGS_FILE" 2>/dev/null || true
+fi
+
+# --- Test 14: startup prompt uses sanitized progress context helper ---
+RAW_PROGRESS_REPLAY="$(printf '%s%s' 'cat /home/slimy/' 'claude-progress.md')"
+if grep -q 'startup-context.sh --progress-only' "$AUTO_SEQ" \
+   && ! grep -q "$RAW_PROGRESS_REPLAY" "$AUTO_SEQ"; then
+  pass "auto-sequence startup prompt uses sanitized progress context helper"
+else
+  fail "auto-sequence startup prompt still has raw progress replay or lacks helper"
 fi
 
 echo ""

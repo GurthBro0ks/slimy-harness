@@ -54,9 +54,9 @@ else
   fail "preamble missing pycache rule"
 fi
 
-# --- 2. Verify live prompt still starts with exact 3-line block ---
+# --- 2. Verify live prompt still starts with sanitized 3-line block ---
 echo
-echo "--- check 2: live prompt still starts with exact 3-line block ---"
+echo "--- check 2: live prompt still starts with sanitized 3-line block ---"
 RESULT=$(python3 -c "
 import sys
 sys.path.insert(0, '$REPO_ROOT/sequencer')
@@ -80,11 +80,11 @@ LINE1=$(echo "$RESULT" | sed -n '1p')
 LINE2=$(echo "$RESULT" | sed -n '2p')
 LINE3=$(echo "$RESULT" | sed -n '3p')
 if [ "$LINE1" = "cat /home/slimy/AGENTS.md" ] \
-   && [ "$LINE2" = "cat /home/slimy/claude-progress.md" ] \
+   && [ "$LINE2" = "bash /home/slimy/slimy-harness/sequencer/startup-context.sh --progress-only" ] \
    && [ "$LINE3" = "source /home/slimy/init.sh" ]; then
-  pass "preamble injection still preserves 3-line start block"
+  pass "preamble injection still preserves sanitized 3-line start block"
 else
-  fail "3-line start block broken: '$LINE1' / '$LINE2' / '$LINE3'"
+  fail "sanitized 3-line start block broken: '$LINE1' / '$LINE2' / '$LINE3'"
 fi
 
 # --- 3. Verify _launch_tmux_session prefixes PYTHONDONTWRITEBYTECODE=1 ---

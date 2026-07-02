@@ -123,14 +123,14 @@ final = '\n'.join(new_lines)
 print(final)
 " 2>&1)
 
-# Check the first 3 lines are exactly the required block
+# Check the first 3 lines are the sanitized startup block
 LINE1=$(echo "$RESULT" | sed -n '1p')
 LINE2=$(echo "$RESULT" | sed -n '2p')
 LINE3=$(echo "$RESULT" | sed -n '3p')
 if [ "$LINE1" = "cat /home/slimy/AGENTS.md" ] \
-   && [ "$LINE2" = "cat /home/slimy/claude-progress.md" ] \
+   && [ "$LINE2" = "bash /home/slimy/slimy-harness/sequencer/startup-context.sh --progress-only" ] \
    && [ "$LINE3" = "source /home/slimy/init.sh" ]; then
-  pass "live prompt still starts with exact 3-line block"
+  pass "live prompt still starts with sanitized 3-line block"
 else
   fail "live prompt first 3 lines wrong: '$LINE1' / '$LINE2' / '$LINE3'"
 fi

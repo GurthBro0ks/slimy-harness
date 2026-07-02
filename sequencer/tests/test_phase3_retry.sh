@@ -152,19 +152,19 @@ else
   fail "attempt-2 prompt.md missing"
 fi
 
-# --- Test 5: attempt-2 prompt starts with exact 3-line block ---
+# --- Test 5: attempt-2 prompt starts with sanitized 3-line block ---
 echo
-echo "--- check 5: attempt-2 prompt starts with exact 3-line block ---"
+echo "--- check 5: attempt-2 prompt starts with sanitized 3-line block ---"
 if [ -f "$PROMPT2" ]; then
   LINE1=$(sed -n '1p' "$PROMPT2")
   LINE2=$(sed -n '2p' "$PROMPT2")
   LINE3=$(sed -n '3p' "$PROMPT2")
-  if [ "$LINE1" = "cat /home/slimy/AGENTS.md" ] \
-     && [ "$LINE2" = "cat /home/slimy/claude-progress.md" ] \
-     && [ "$LINE3" = "source /home/slimy/init.sh" ]; then
-    pass "attempt-2 prompt starts with exact 3-line block"
-  else
-    fail "attempt-2 prompt first 3 lines: '$LINE1' / '$LINE2' / '$LINE3'"
+	  if [ "$LINE1" = "cat /home/slimy/AGENTS.md" ] \
+	     && [ "$LINE2" = "bash /home/slimy/slimy-harness/sequencer/startup-context.sh --progress-only" ] \
+	     && [ "$LINE3" = "source /home/slimy/init.sh" ]; then
+	    pass "attempt-2 prompt starts with sanitized 3-line block"
+	  else
+	    fail "attempt-2 prompt first 3 lines: '$LINE1' / '$LINE2' / '$LINE3'"
   fi
 else
   fail "attempt-2 prompt.md missing (cannot check 3-line block)"
