@@ -40,7 +40,7 @@ INSTALL_PROMPT
 cat << 'CC_AUTO'
 MANDATORY STARTUP — do all 5 before writing any code:
 1. cat AGENTS.md
-2. cat claude-progress.md
+2. bash /home/slimy/slimy-harness/sequencer/startup-context.sh --progress-only
 3. python3 -c "import json; d=json.load(open('feature_list.json')); [print(f'{f[\"id\"]}: [{f[\"priority\"]}] {f[\"description\"]}') for f in d['features'] if not f['passes']]" 2>/dev/null || cat feature_list.json
 4. git log --oneline -10
 5. source init.sh
@@ -65,7 +65,7 @@ CC_AUTO
 cat << 'CC_DIRECTED'
 MANDATORY STARTUP — do all 4 before writing any code:
 1. cat AGENTS.md
-2. cat claude-progress.md
+2. bash /home/slimy/slimy-harness/sequencer/startup-context.sh --progress-only
 3. git log --oneline -10
 4. source init.sh
 
@@ -88,7 +88,7 @@ CC_DIRECTED
 cat << 'CC_FIX'
 MANDATORY STARTUP — do all 4 before writing any code:
 1. cat AGENTS.md
-2. cat claude-progress.md
+2. bash /home/slimy/slimy-harness/sequencer/startup-context.sh --progress-only
 3. git log --oneline -10
 4. source init.sh
 
@@ -116,7 +116,7 @@ CC_FIX
 cat << 'CC_REFACTOR'
 MANDATORY STARTUP — do all 4 before writing any code:
 1. cat AGENTS.md
-2. cat claude-progress.md
+2. bash /home/slimy/slimy-harness/sequencer/startup-context.sh --progress-only
 3. git log --oneline -10
 4. source init.sh
 
