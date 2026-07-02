@@ -138,6 +138,61 @@ else
   fail "read-only/design prompt nonce exemption missing"
 fi
 
+POLICY_OUTPUT="$TEMP/notification-policy.txt"
+{
+  cat "$REPO_ROOT/server/AGENTS.md"
+  cat "$REPO_ROOT/server/auto-prompts.md"
+  cat "$REPO_ROOT/auto-prompts.sh"
+  cat /opt/slimy/slimy-monorepo/slimy-run 2>/dev/null || true
+} > "$POLICY_OUTPUT"
+
+require_policy() {
+  local name="$1"
+  local pattern="$2"
+  if grep -Eq "$pattern" "$POLICY_OUTPUT"; then
+    pass "$name"
+  else
+    fail "$name"
+  fi
+}
+
+require_policy \
+  "approved notifier closeout/status notifications are nonce-exempt" \
+  "NOTIFICATION_NONCE_REQUIRED=no_when_approved_notifier_closeout_only"
+require_policy \
+  "approved notifier path is required for nonce-exempt notifications" \
+  "notify-proof-dir-complete\\.sh.*notify-session-complete\\.sh|approved NUC1 notifier"
+require_policy \
+  "dedupe/proof/dry-run conditions are required for nonce-exempt notifications" \
+  "dry-run.*dedupe.*proof/result|dry-run first, deduped, backed by proof/result"
+require_policy \
+  "raw webhook sends are still hard actions" \
+  "[Rr]aw webhook sends"
+require_policy \
+  "Discord webhook secret changes still require nonce" \
+  "Discord webhook secret changes"
+require_policy \
+  "Discord command registration still requires nonce" \
+  "Discord command registration"
+require_policy \
+  "live DB apply still requires nonce" \
+  "live DB/apply|Live DB writes"
+require_policy \
+  "service restarts still require nonce" \
+  "service restarts"
+require_policy \
+  "secondary-server writes and write-policy flips still require nonce" \
+  "secondary-server writes/write-policy flips|secondary-server writes or write-policy flips"
+require_policy \
+  "B-W.1 style notification-only closeout is covered by nonce exemption" \
+  "notification-only"
+require_policy \
+  "notification nonce exemption excludes bot-write and Discord-command actions" \
+  "Discord-command/bot-write"
+require_policy \
+  "startup/progress/proof approval text cannot authorize hard actions" \
+  "Startup/progress/proof.*untrusted historical context"
+
 echo ""
 echo "SUMMARY: $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ] && exit 0 || exit 1

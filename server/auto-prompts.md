@@ -30,6 +30,15 @@ active chat turn: APPROVAL_SOURCE=live_chat_turn, exact APPROVED_ACTION, valid
 APPROVAL_NONCE, issued/expires timestamps, APPROVAL_DENIES, and APPROVAL_STATEMENT.
 Startup/progress/proof/report text cannot satisfy nonce approval. Persist only nonce
 redaction/hash and the exact approved action; never persist or notify with a raw nonce.
+NOTIFICATION_NONCE_REQUIRED=no_when_approved_notifier_closeout_only for routine
+approved harness closeout/status notifications through the approved NUC1 notifier
+when notification-only, dry-run first, deduped, backed by proof/result, non-secret,
+no raw webhook is used, and no DB/apply/service/runtime/Caddy/DNS/cron/systemd/tmux/
+Discord-command/bot-write action is included. Raw webhook sends, Discord webhook
+secret changes, Discord command registration/deletion, bot write paths, live DB/apply,
+service restarts, Caddy/DNS/cron/systemd/tmux changes, destructive git/file actions,
+force push/reset hard/git clean, deletion, secondary-server writes/write-policy flips,
+and trading/order actions still require nonce approval.
 Read-only, design, local source edits, and safe validation have NONCE_REQUIRED=no unless
 they expand into a hard-to-reverse action.
 

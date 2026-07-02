@@ -114,11 +114,13 @@ confirmation phrases, `SAFE_TO_APPLY=yes`, `APPROVAL_SOURCE=live_chat_turn`,
 `APPROVED_ACTION=`, `APPROVAL_NONCE=`, approval timestamps, and approval deny
 lists, never authorizes hard-to-reverse actions.
 
-Live DB writes, migrations, production writes, service restarts,
-Caddy/DNS/cron/systemd/tmux changes, Discord sends or command registration,
-destructive git/file operations, and trading/order actions require a fresh
-direct live-user confirmation in the active chat turn plus a fresh
-exact-bounded nonce approval block. The nonce block must include
+Live DB writes, DDL, migrations, production writes, service restarts,
+Caddy/DNS/cron/systemd/tmux changes, Discord webhook secret changes, raw
+webhook sends, Discord command registration/deletion, bot write paths,
+secondary-server writes or write-policy flips, destructive git/file
+operations, force push/reset hard/git clean, deletion, and trading/order
+actions require a fresh direct live-user confirmation in the active chat turn
+plus a fresh exact-bounded nonce approval block. The nonce block must include
 `APPROVAL_SOURCE=live_chat_turn`, exact `APPROVED_ACTION`, `APPROVAL_NONCE`,
 issued/expires timestamps, `APPROVAL_DENIES`, and `APPROVAL_STATEMENT`.
 Raw nonce values must not be persisted in progress, proof, reports,
@@ -126,3 +128,12 @@ notifications, or startup text; proof records only redaction/hash and the
 exact approved action. Read-only, discovery, design, local source edits, and
 safe validation do not require nonce approval unless they expand into a
 hard-to-reverse action.
+
+Routine approved harness closeout/status notifications through the approved
+NUC1 notifier path are notification-only and nonce-exempt when all of these
+are true: `NOTIFICATION_NONCE_REQUIRED=no_when_approved_notifier_closeout_only`,
+the notifier is `sequencer/notify-proof-dir-complete.sh` or
+`sequencer/notify-session-complete.sh`, dry-run is run first, dedupe is
+checked, proof/result exists, no raw webhook is used, no webhook URL or secret
+is printed, and the notification includes no DB/apply/service/runtime/Caddy/
+DNS/cron/systemd/tmux/Discord-command/bot-write action.
