@@ -60,6 +60,27 @@ A shared knowledge base lives at /home/slimy/kb/ (git repo: GurthBro0ks/slimy-kb
 (Optional) If you discovered a reusable pattern, debugging fix, or architecture decision:
   echo "content" | bash /home/slimy/kb/tools/kb-write.sh raw/agent-learnings/$(date +%Y-%m-%d)-$(hostname)-[slug].md
 
+## Validation Recipe Discipline
+
+When a truth gate or mission validation runs tests, the proof must be honest:
+
+- Invoke the test runner directly on explicit, existing file paths from the
+  correct working directory. Wrapper scripts (`pnpm test:bot`,
+  `pnpm --filter <app> test`, `pnpm test:all`) expand to FULL suites — never
+  present them as a focused check.
+- Vitest treats CLI paths as filters: a wrong path is silently ignored when
+  another matches, and Jest flags like `--runInBand` make the run fail.
+  Verify the reported test-file count matches the files you requested.
+- Capture exit codes honestly: run the command, then save `$?` (or
+  `rc=0; cmd || rc=$?` under `set -e`).
+  Never mask them: `cmd || true; echo $?` is BROKEN (always reports 0).
+  `|| true` is only for best-effort lines whose status feeds no PASS/FAIL
+  claim.
+- If a full suite has a known unrelated failure, report it by test name as
+  KNOWN-WARN — never as a clean PASS, never hidden.
+- Monorepo bot specifics: docs/BOT_VALIDATION_RECIPES.md in the
+  slimy-harness repo.
+
 ---
 
 ## Host-Specific Sections (fill in per NUC)

@@ -99,6 +99,16 @@ Something is broken. Your job:
 4. Re-run truth gate after each fix to confirm
 5. Do NOT start new features — only fix what's broken
 
+VALIDATION RECIPE RULES:
+- Focused tests: call the runner on explicit existing paths from the correct
+  cwd; wrappers like `pnpm test:bot` / `pnpm test:all` run FULL suites.
+- Vitest paths are filters (typos silently ignored); no Jest flags
+  (`--runInBand`). Verify the reported test-file count.
+- Capture exit codes honestly (run, then save `$?`).
+  Never mask them: `cmd || true; echo $?` is BROKEN (always prints 0).
+- Report known unrelated failures as KNOWN-WARN by name, never as clean
+  PASS. Bot specifics: docs/BOT_VALIDATION_RECIPES.md in slimy-harness.
+
 MANDATORY SHUTDOWN:
 1. Update claude-progress.md with what you fixed
 2. Update feature_list.json if any feature status changed

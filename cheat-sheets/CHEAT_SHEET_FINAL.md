@@ -47,7 +47,10 @@ bash scripts/check-sync-state.sh --fetch
 
 ### Truth Gates
 ```bash
-# Monorepo
+# Monorepo — NOTE: this runs the FULL bot suite.
+# Focused test: cd apps/bot && npx vitest run tests/lib/<name>.test.ts
+# (see docs/BOT_VALIDATION_RECIPES.md — Vitest paths are filters, Jest flags
+#  like --runInBand fail, capture exit codes without `|| true`)
 pnpm --filter @slimy/bot build && pnpm --filter @slimy/bot test
 
 # Bot bundle

@@ -17,7 +17,14 @@ STARTUP (mandatory, do all 5 before any code):
 RULES:
 - Work on ONE feature only.
 - Run `pnpm lint` after every file change.
-- Run `pnpm test:all` before marking anything as passing.
+- Run `pnpm test:all` before marking anything as passing. It runs EVERY
+  workspace suite; for a focused bot test use
+  `cd apps/bot && npx vitest run tests/lib/<name>.test.ts` and verify the
+  reported test-file count (Vitest silently ignores non-matching paths).
+- Capture test exit codes honestly: run, then save `$?`.
+  Never mask them: `cmd || true; echo $?` is BROKEN (always prints 0).
+  No Jest flags (`--runInBand`) with Vitest.
+- Full bot recipes: docs/BOT_VALIDATION_RECIPES.md in slimy-harness.
 - Small commits: `git add -A && git commit -m "feat: <what you did>"`
 
 SHUTDOWN (mandatory, do all 3 before ending):

@@ -17,7 +17,7 @@ You are an autonomous coding agent working in the SlimyAI monorepo.
 - `apps/web/` — Main Next.js web app (port 3000)
 - `apps/admin-api/` — Express admin API (port 3080)
 - `apps/admin-ui/` — Admin dashboard (port 3081)
-- `apps/bot/` — Bot application (placeholder)
+- `apps/bot/` — Discord bot (TypeScript, Vitest tests in `apps/bot/tests/`)
 - `packages/` — Shared libraries (config, db, auth, utils)
 - `lib/` — Internal libraries
 - `infra/docker/` — Docker/deployment configs
@@ -40,6 +40,24 @@ A feature is only "done" when:
 1. `pnpm lint` passes
 2. `pnpm test:all` passes (or the relevant app test)
 3. The feature works end-to-end (not just unit tests)
+
+### Bot test recipes (copy exactly — do not improvise)
+
+- Focused bot tests: `cd apps/bot && npx vitest run tests/lib/<name>.test.ts`
+  (Vitest args are filters — a typo'd path is silently ignored when another
+  matches; verify the reported test-file count matches what you asked for).
+- Script tests live in `scripts/__tests__/` (never `scripts/tests/`):
+  `npx vitest run --config scripts/vitest.config.mjs scripts/__tests__/<name>.test.mjs`
+- `pnpm test:bot` / `pnpm --filter @slimy/bot test` run the FULL bot suite —
+  don't use them for a focused check. `--runInBand` is Jest-only and fails
+  under Vitest.
+- Capture exit codes honestly: run the command, then save `$?` (or
+  `rc=0; cmd || rc=$?` under `set -e`).
+  Never mask them: `cmd || true; echo $?` is BROKEN (always prints 0).
+- Full-suite runs currently have one known unrelated WARN
+  (version-manifest.test.ts, web 0.4.0 vs manifest 0.4.3) — report it as
+  KNOWN-WARN by name, never as a clean PASS.
+- Full recipes: `docs/BOT_VALIDATION_RECIPES.md` in the slimy-harness repo.
 
 ## Forbidden Zones (DO NOT TOUCH)
 
