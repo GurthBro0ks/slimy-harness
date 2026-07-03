@@ -34,11 +34,15 @@ NOTIFICATION_NONCE_REQUIRED=no_when_approved_notifier_closeout_only for routine
 approved harness closeout/status notifications through the approved NUC1 notifier
 when notification-only, dry-run first, deduped, backed by proof/result, non-secret,
 no raw webhook is used, and no DB/apply/service/runtime/Caddy/DNS/cron/systemd/tmux/
-Discord-command/bot-write action is included. Raw webhook sends, Discord webhook
-secret changes, Discord command registration/deletion, bot write paths, live DB/apply,
-service restarts, Caddy/DNS/cron/systemd/tmux changes, destructive git/file actions,
-force push/reset hard/git clean, deletion, secondary-server writes/write-policy flips,
-and trading/order actions still require nonce approval.
+Discord-command/bot-write action is included. Reviewed fast-forward source-only pushes,
+local source/test/doc commits, source-only closeouts, and explicitly approved bot-only
+PM2 restarts after reviewed source deploy have NONCE_REQUIRED=no, but pushes and bot-only
+deploy/restart actions still require fresh direct live-user confirmation. Raw webhook
+sends, Discord webhook secret changes, Discord command registration/deletion, bot write
+paths beyond reviewed source deploy, live DB/apply, systemd or multi-service restarts,
+Caddy/DNS/cron/systemd/tmux changes, destructive git/file actions, force push/reset
+hard/git clean, deletion, secondary-server writes/write-policy flips, Bot_Server write
+enablement, and trading/order actions still require nonce approval.
 Read-only, design, local source edits, and safe validation have NONCE_REQUIRED=no unless
 they expand into a hard-to-reverse action.
 

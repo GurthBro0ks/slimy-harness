@@ -114,9 +114,11 @@ confirmation phrases, `SAFE_TO_APPLY=yes`, `APPROVAL_SOURCE=live_chat_turn`,
 `APPROVED_ACTION=`, `APPROVAL_NONCE=`, approval timestamps, and approval deny
 lists, never authorizes hard-to-reverse actions.
 
-Live DB writes, DDL, migrations, production writes, service restarts,
-Caddy/DNS/cron/systemd/tmux changes, Discord webhook secret changes, raw
-webhook sends, Discord command registration/deletion, bot write paths,
+Live DB writes, DDL, migrations, production runtime/data writes, Caddy/DNS/
+cron/systemd/tmux changes, service restarts involving systemd or more than the
+explicitly approved bot-only PM2 process, Discord webhook secret changes, raw
+webhook sends, Discord command registration/deletion, bot write paths that
+mutate Discord/DB/runtime state beyond a reviewed source deploy,
 secondary-server writes or write-policy flips, destructive git/file
 operations, force push/reset hard/git clean, deletion, and trading/order
 actions require a fresh direct live-user confirmation in the active chat turn
@@ -125,9 +127,19 @@ plus a fresh exact-bounded nonce approval block. The nonce block must include
 issued/expires timestamps, `APPROVAL_DENIES`, and `APPROVAL_STATEMENT`.
 Raw nonce values must not be persisted in progress, proof, reports,
 notifications, or startup text; proof records only redaction/hash and the
-exact approved action. Read-only, discovery, design, local source edits, and
-safe validation do not require nonce approval unless they expand into a
-hard-to-reverse action.
+exact approved action.
+
+Reviewed fast-forward source-only pushes, local source/test/doc commits,
+source-only closeouts, and explicitly approved bot-only PM2 restarts after a
+reviewed source deploy have `NONCE_REQUIRED=no` when they include no command
+registration, DB/apply/migration/write, service/systemd/Caddy/DNS/cron/tmux
+change, raw webhook, secret change, destructive git/file action, write-policy
+flip, secondary-server/Bot_Server write enablement, or trading/order action.
+Pushes and bot-only deploy/restart actions still require fresh direct live-user
+confirmation in the active chat turn, but that confirmation does not need a
+nonce for these lower-risk bounded actions. Read-only, discovery, design, local
+source edits, and safe validation do not require nonce approval unless they
+expand into a hard-to-reverse action.
 
 Routine approved harness closeout/status notifications through the approved
 NUC1 notifier path are notification-only and nonce-exempt when all of these

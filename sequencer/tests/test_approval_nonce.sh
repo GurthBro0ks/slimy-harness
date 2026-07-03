@@ -160,6 +160,24 @@ require_policy \
   "approved notifier closeout/status notifications are nonce-exempt" \
   "NOTIFICATION_NONCE_REQUIRED=no_when_approved_notifier_closeout_only"
 require_policy \
+  "source-only fast-forward pushes are nonce-exempt" \
+  "[Rr]eviewed fast-forward source-only pushes"
+require_policy \
+  "pushes still require direct live confirmation" \
+  "Pushes and bot-only deploy/restart actions still require fresh direct live-user|pushes and bot-only"
+require_policy \
+  "local source/test/doc commits are nonce-exempt" \
+  "local source/test/doc commits"
+require_policy \
+  "source-only closeouts are nonce-exempt" \
+  "source-only closeouts"
+require_policy \
+  "approved bot-only PM2 restart after reviewed deploy is nonce-exempt" \
+  "PM2 restarts after reviewed source deploy|bot-only PM2 restarts after a"
+require_policy \
+  "bot-only deploy/restart still requires direct live confirmation" \
+  "bot-only deploy/restart actions still require fresh direct live-user"
+require_policy \
   "approved notifier path is required for nonce-exempt notifications" \
   "notify-proof-dir-complete\\.sh.*notify-session-complete\\.sh|approved NUC1 notifier"
 require_policy \
@@ -167,7 +185,7 @@ require_policy \
   "dry-run.*dedupe.*proof/result|dry-run first, deduped, backed by proof/result"
 require_policy \
   "raw webhook sends are still hard actions" \
-  "[Rr]aw webhook sends"
+  "[Rr]aw webhook"
 require_policy \
   "Discord webhook secret changes still require nonce" \
   "Discord webhook secret changes"
@@ -178,11 +196,23 @@ require_policy \
   "live DB apply still requires nonce" \
   "live DB/apply|Live DB writes"
 require_policy \
-  "service restarts still require nonce" \
-  "service restarts"
+  "systemd or multi-service restarts still require nonce" \
+  "systemd or multi-service restarts|service restarts involving systemd or more than"
+require_policy \
+  "Caddy/DNS/cron/systemd/tmux still require nonce" \
+  "Caddy/DNS/cron/systemd/tmux changes"
 require_policy \
   "secondary-server writes and write-policy flips still require nonce" \
   "secondary-server writes/write-policy flips|secondary-server writes or write-policy flips"
+require_policy \
+  "Bot_Server write enablement still requires nonce" \
+  "Bot_Server write enablement"
+require_policy \
+  "destructive git/file actions still require nonce" \
+  "destructive git/file actions|destructive git/file operations"
+require_policy \
+  "force push/reset hard/git clean still require nonce" \
+  "force push/reset hard/git clean"
 require_policy \
   "B-W.1 style notification-only closeout is covered by nonce exemption" \
   "notification-only"
