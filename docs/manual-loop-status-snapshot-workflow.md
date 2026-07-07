@@ -64,6 +64,20 @@ assert data["safety"]["owner_gate_required_for_ui"] is True
 PY
 ```
 
+Also run a forbidden-content scan over the `/tmp` output before treating it as
+safe to review further:
+
+```bash
+rg -n "raw proof|command output|approval statement|env value|webhook URL|Bearer|BOT_SYNC_SECRET|cron line|SECRET|TOKEN|PASSWORD|PRIVATE KEY" \
+  /tmp/loop-status-latest-smoke.json || true
+```
+
+Any match must be classified before proceeding — `target_machine`,
+`target_repo`, and `proof_dir` are expected `loop-status.v1` schema fields,
+not raw proof content, but any of the other terms above appearing with a
+real value (not empty string) means stop and do not proceed to a canonical
+write.
+
 ## Canonical Manual Write
 
 Only after fresh live operator approval for a canonical write:
@@ -96,6 +110,27 @@ After a separately approved canonical write:
   token, webhook URL, cron line, `target_machine`, `target_repo`, `proof_dir`,
   forms, buttons, or mutation controls are visible.
 - Confirm logged-out `/harness/loop` still redirects to `/login`.
+
+## Rollback
+
+Rolling back a canonical write requires the same standard as making one:
+fresh live operator approval before acting, obtained separately from the
+approval that authorized the original write.
+
+- To return the dashboard to fixture-fallback mode, remove the canonical
+  file only (`/home/slimy/harness-logs/loop-status-snapshot/latest.json`);
+  do not remove the parent directory unless it is empty and no longer
+  needed.
+- If a prior known-good snapshot was preserved outside the canonical path
+  (e.g. copied to `/tmp` or another explicit path before being overwritten),
+  restore from that copy with the same `--out` + `--confirm-canonical-latest`
+  workflow described above rather than hand-editing the canonical file.
+- After any rollback, repeat the Manual QA checklist below to confirm the
+  dashboard renders the expected state (fixture-fallback or restored
+  snapshot) and that logged-out access still redirects to `/login`.
+- Do not delete or replace the canonical file as part of routine
+  troubleshooting without that separate live approval — treat removal the
+  same as a write for approval purposes.
 
 ## No-Go List
 

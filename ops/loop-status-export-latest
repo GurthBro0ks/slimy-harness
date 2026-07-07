@@ -88,7 +88,10 @@ if [[ -z "$OUT" || "$OUT" != *.json ]]; then
   exit 64
 fi
 
-if [[ "$OUT" == "$DEFAULT_OUT" && "$DRY_RUN" -eq 0 && "$CONFIRM_CANONICAL_LATEST" -ne 1 ]]; then
+OUT_CANON="$(realpath -m -- "$OUT")"
+DEFAULT_OUT_CANON="$(realpath -m -- "$DEFAULT_OUT")"
+
+if [[ "$OUT_CANON" == "$DEFAULT_OUT_CANON" && "$DRY_RUN" -eq 0 && "$CONFIRM_CANONICAL_LATEST" -ne 1 ]]; then
   echo "ERROR: canonical latest.json write requires --confirm-canonical-latest" >&2
   exit 64
 fi
@@ -115,7 +118,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   if [[ -n "$PROOF_ROOT" ]]; then
     printf 'proof_root=%s\n' "$PROOF_ROOT"
   fi
-  if [[ "$OUT" == "$DEFAULT_OUT" ]]; then
+  if [[ "$OUT_CANON" == "$DEFAULT_OUT_CANON" ]]; then
     printf 'canonical_confirmation_required=yes\n'
     printf 'canonical_confirmation_present=%s\n' "$CONFIRM_CANONICAL_LATEST"
   fi

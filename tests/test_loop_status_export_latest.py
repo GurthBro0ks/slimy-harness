@@ -110,6 +110,54 @@ def test_refuses_canonical_write_without_confirmation(tmp_path: Path) -> None:
     assert CANONICAL_OUT.exists() is canonical_file_existed
 
 
+def test_refuses_canonical_write_with_double_slash_spelling(tmp_path: Path) -> None:
+    queue_path = tmp_path / "queue.json"
+    write_queue(queue_path)
+    canonical_parent_existed = CANONICAL_OUT.parent.exists()
+    canonical_file_existed = CANONICAL_OUT.exists()
+    alt_out = "/home/slimy/harness-logs//loop-status-snapshot/latest.json"
+
+    result = run_helper("--queue", str(queue_path), "--out", alt_out)
+
+    assert result.returncode == 64
+    assert "requires --confirm-canonical-latest" in result.stderr
+    assert CANONICAL_OUT.parent.exists() is canonical_parent_existed
+    assert CANONICAL_OUT.exists() is canonical_file_existed
+
+
+def test_refuses_canonical_write_with_dot_segment_spelling(tmp_path: Path) -> None:
+    queue_path = tmp_path / "queue.json"
+    write_queue(queue_path)
+    canonical_parent_existed = CANONICAL_OUT.parent.exists()
+    canonical_file_existed = CANONICAL_OUT.exists()
+    alt_out = "/home/slimy/harness-logs/loop-status-snapshot/../loop-status-snapshot/latest.json"
+
+    result = run_helper("--queue", str(queue_path), "--out", alt_out)
+
+    assert result.returncode == 64
+    assert "requires --confirm-canonical-latest" in result.stderr
+    assert CANONICAL_OUT.parent.exists() is canonical_parent_existed
+    assert CANONICAL_OUT.exists() is canonical_file_existed
+
+
+def test_canonical_dry_run_reports_confirmation_requirement_for_equivalent_spelling(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue.json"
+    write_queue(queue_path)
+    canonical_parent_existed = CANONICAL_OUT.parent.exists()
+    canonical_file_existed = CANONICAL_OUT.exists()
+    alt_out = "/home/slimy/harness-logs/loop-status-snapshot/../loop-status-snapshot/latest.json"
+
+    result = run_helper("--queue", str(queue_path), "--out", alt_out, "--dry-run")
+
+    assert result.returncode == 0
+    assert "canonical_confirmation_required=yes" in result.stdout
+    assert "canonical_confirmation_present=0" in result.stdout
+    assert CANONICAL_OUT.parent.exists() is canonical_parent_existed
+    assert CANONICAL_OUT.exists() is canonical_file_existed
+
+
 def test_canonical_dry_run_reports_confirmation_requirement_without_writing(tmp_path: Path) -> None:
     queue_path = tmp_path / "queue.json"
     write_queue(queue_path)
