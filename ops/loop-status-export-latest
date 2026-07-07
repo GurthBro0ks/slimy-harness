@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_OUT="/home/slimy/harness-logs/loop-status-snapshot/latest.json"
+
+QUEUE=""
+OUT="$DEFAULT_OUT"
+PROOF_ROOT=""
+DRY_RUN=0
+CONFIRM_CANONICAL_LATEST=0
+
+usage() {
+  cat <<'USAGE'
+loop-status-export-latest -- manual Habitat loop-status snapshot export
+
+Usage:
+  ops/loop-status-export-latest --queue PATH [--proof-root PATH] [--out PATH] [--dry-run]
+                                [--confirm-canonical-latest]
+
+Options:
+  --queue PATH       Required explicit local queue JSON path to read.
+  --proof-root PATH  Optional explicit local proof root for proof-gate enrichment.
+  --out PATH         Output path. Defaults to /home/slimy/harness-logs/loop-status-snapshot/latest.json.
+                    Use a /tmp path for validation tests.
+  --dry-run          Validate paths and print the export command without writing.
+  --confirm-canonical-latest
+                    Required before writing the default canonical latest.json path.
+  --help             Show this help.
+
+This helper is manual-only. It does not schedule itself, run agents, call
+models, send Discord, restart services, or mutate queue/proof state.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --queue)
+      QUEUE="${2:-}"
+      shift 2
+      ;;
+    --proof-root)
+      PROOF_ROOT="${2:-}"
+      shift 2
+      ;;
+    --out)
+      OUT="${2:-}"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --confirm-canonical-latest)
+      CONFIRM_CANONICAL_LATEST=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      usage >&2
+      exit 64
+      ;;
+  esac
+done
+
+if [[ -z "$QUEUE" ]]; then
+  echo "ERROR: --queue is required" >&2
+  usage >&2
+  exit 64
+fi
+
+if [[ ! -f "$QUEUE" ]]; then
+  echo "ERROR: queue file not found: $QUEUE" >&2
+  exit 66
+fi
+
+if [[ -n "$PROOF_ROOT" && ! -d "$PROOF_ROOT" ]]; then
+  echo "ERROR: proof root not found: $PROOF_ROOT" >&2
+  exit 66
+fi
+
+if [[ -z "$OUT" || "$OUT" != *.json ]]; then
+  echo "ERROR: --out must be a JSON file path" >&2
+  exit 64
+fi
+
+if [[ "$OUT" == "$DEFAULT_OUT" && "$DRY_RUN" -eq 0 && "$CONFIRM_CANONICAL_LATEST" -ne 1 ]]; then
+  echo "ERROR: canonical latest.json write requires --confirm-canonical-latest" >&2
+  exit 64
+fi
+
+OUT_PARENT="$(dirname "$OUT")"
+if [[ -L "$OUT_PARENT" ]]; then
+  echo "ERROR: output parent must not be a symlink: $OUT_PARENT" >&2
+  exit 65
+fi
+if [[ -e "$OUT" && ( -d "$OUT" || -L "$OUT" ) ]]; then
+  echo "ERROR: output path must be a regular JSON file path: $OUT" >&2
+  exit 65
+fi
+
+CMD=("$SCRIPT_DIR/loop-status-export" "--queue" "$QUEUE" "--out" "$OUT")
+if [[ -n "$PROOF_ROOT" ]]; then
+  CMD+=("--proof-root" "$PROOF_ROOT")
+fi
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  printf 'DRY_RUN=1\n'
+  printf 'queue=%s\n' "$QUEUE"
+  printf 'out=%s\n' "$OUT"
+  if [[ -n "$PROOF_ROOT" ]]; then
+    printf 'proof_root=%s\n' "$PROOF_ROOT"
+  fi
+  if [[ "$OUT" == "$DEFAULT_OUT" ]]; then
+    printf 'canonical_confirmation_required=yes\n'
+    printf 'canonical_confirmation_present=%s\n' "$CONFIRM_CANONICAL_LATEST"
+  fi
+  printf 'command='
+  printf '%q ' "${CMD[@]}"
+  printf '\n'
+  exit 0
+fi
+
+if [[ ! -d "$OUT_PARENT" ]]; then
+  install -d -m 0755 "$OUT_PARENT"
+fi
+
+exec "${CMD[@]}"
