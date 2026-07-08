@@ -95,6 +95,46 @@ refuses symlink output parents, and delegates atomic temp-file replacement to
 `ops/loop-status-export`. The default canonical output path is refused without
 that confirmation flag.
 
+## Future Refresh Checklist
+
+Use this checklist for any later manual-only refresh of the existing canonical
+`latest.json` file. A refresh is still a production-visible canonical rewrite,
+not routine maintenance, and there is no automation approved for it.
+
+- Get fresh live operator approval for the exact refresh. Include the reviewed
+  queue path, target machine, target repo, and the no-automation constraints.
+- Capture current canonical metadata before changing anything:
+
+  ```bash
+  stat /home/slimy/harness-logs/loop-status-snapshot/latest.json
+  ```
+
+- Use one explicit, reviewed temporary/operator queue for that refresh. Do not
+  infer, create, or use a default production queue path, autonomous discovery,
+  or generated placeholder items.
+- Validate the queue and run any proof-gate enrichment against real proof
+  directories. Keep truthful `BLOCKED` results when proof gates block; do not
+  force a green-looking snapshot.
+- Run the `/tmp` dry-run and real `/tmp` write from the validation section
+  above, then re-run JSON parse, schema, safety-flag, item/status summary, and
+  forbidden-content checks on the `/tmp` output.
+- Only after the `/tmp` gates pass, run the canonical write once with
+  `--confirm-canonical-latest`.
+- Revalidate the canonical file after the write: JSON parse, `loop-status.v1`
+  schema, safety flags, item/status summary, and forbidden-content scan. Capture
+  the after-write `stat` output and compare it with the before-write metadata.
+- Complete owner browser and mobile QA every time: confirm snapshot mode,
+  counts, badges, stale/fresh wording, safety summary, absence of raw
+  proof/secret/mutation content, and logged-out redirect to `/login`.
+- Record accepted state and proof for the refresh after validation and QA are
+  complete.
+- Rollback requires separate fresh live approval. Restore a reviewed known-good
+  snapshot through this helper, or remove only `latest.json` to return to
+  fixture fallback.
+- Keep refreshes manual and one-time. Do not add cron, systemd timers, tmux
+  loops, request-time shell, queue watchers, Discord triggers, model execution,
+  Caddy/DNS changes, or service restarts.
+
 ## Manual QA
 
 After a separately approved canonical write:
