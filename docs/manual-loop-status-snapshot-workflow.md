@@ -95,6 +95,29 @@ refuses symlink output parents, and delegates atomic temp-file replacement to
 `ops/loop-status-export`. The default canonical output path is refused without
 that confirmation flag.
 
+## When Stale Status Is Actionable
+
+A stale `/harness/loop` display is an operator cue, not a failure and not approval to refresh.
+Leave a stale-but-accepted snapshot unchanged when it still truthfully reflects the
+last accepted proof state and no current operator decision depends on fresher data.
+
+Request a manual refresh only when at least one of these is true:
+
+- An owner/operator decision would use `/harness/loop` and stale data could
+  mislead that decision.
+- New accepted proof, queue, or closeout evidence needs to be reflected in the
+  dashboard.
+- The owner explicitly requests a fresh manual snapshot in a live message.
+- The canonical snapshot is missing or invalid and proof confirms a manual
+  refresh is the correct repair.
+
+A refresh remains manual-only. Use the Future Refresh Checklist, validate
+`/tmp` output first, require fresh live approval before the canonical write, use
+`--confirm-canonical-latest`, verify the owner view, and close out with
+dedupe-aware notification handling. This policy does not approve cron, systemd
+timers, tmux loops, request-time shell, Discord-triggered refresh, autonomous
+runners, AGNT runtime, or any recurring automation.
+
 ## Future Refresh Checklist
 
 Use this checklist for any later manual-only refresh of the existing canonical
