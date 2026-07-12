@@ -50,6 +50,8 @@ slimy-harness/
 │   ├── slimy-harness/
 │   └── slimy-monorepo/
 ├── docs/
+│   ├── CONSTITUTION.md               # Durable invariants (D1–D8) + methodology
+│   ├── RUN_RECORD_AND_ACCEPTANCE_LEDGER_SPEC.md  # First spec (unimplemented)
 │   ├── HARNESS_ARCHITECTURE.md       # Current design + v3 plan
 │   ├── REFERENCE_AGENTS_HOST_SPECIFIC.md  # NUC1-specific content (DO NOT COPY)
 │   ├── CURRENT_LAYOUT_FINDINGS.md    # What existed and where
