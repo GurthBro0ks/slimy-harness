@@ -549,6 +549,10 @@ TMP_REPORT="$(mktemp -t session-report-from-proof.XXXXXX.json)"
 python3 > "$TMP_REPORT" << PYEOF
 import json, os
 import re
+import sys
+
+sys.path.insert(0, "$SEQUENCER_DIR")
+from proof_report_evidence import collect_report_evidence
 
 proof_dir = "$PROOF_DIR"
 result_file = "$RESULT_FILE"
@@ -656,9 +660,17 @@ for f in os.listdir(proof_dir):
     if os.path.isfile(fp) and f not in ("RESULT.md", "harness-metadata.json", "harness-metadata.resolved.json"):
         files_changed.append(f)
 
-tests = classify_tests(result_file, status)
+evidence = collect_report_evidence(
+    proof_dir,
+    result_file,
+    status,
+    now,
+    summary,
+)
+tests = evidence["tests"]
 
 report = {
+    "report_schema_version": "2",
     "session_id": now,
     "agent": agent or "unknown",
     "nuc": source_nuc or "unknown",
@@ -673,13 +685,22 @@ report = {
     "feature_id": feature_id or "unknown",
     "prompt_type": "direct",
     "status": status or "completed",
+    "result": evidence["result_fields"].get("RESULT", status),
     "summary": (summary or "Agent completed.")[:500],
-    "changes": files_changed[:20],
+    # Compatibility alias for the currently deployed renderer. The richer
+    # artifacts object distinguishes proof totals from displayed names.
+    "changes": evidence["artifacts"]["displayed_files"],
     "tests": tests,
+    "validation_summary": evidence["validation_summary"],
+    "artifacts": evidence["artifacts"],
     "blockers": [],
-    "recommendation": {"next_feature_id": None, "reasoning": "", "risk_notes": ""},
+    "recommendation": {"next_feature_id": None, "reasoning": evidence["next_action"], "risk_notes": ""},
+    "next_action": evidence["next_action"],
     "kb_learnings": [],
-    "duration_minutes": 0,
+    "duration_minutes": evidence["duration"]["duration_minutes"],
+    "duration_source": evidence["duration"]["duration_source"],
+    "started_at": evidence["duration"]["started_at"],
+    "completed_at": evidence["duration"]["completed_at"],
     "timestamp": now,
     "created_at": now,
     "archived_at": now,
@@ -689,6 +710,13 @@ report = {
     "discord_sent": False,
     "notify_mode": "runtime" if "$DRY_RUN" == "0" else "dry-run",
     "dedupe_result": "not_checked",
+    "run_id": evidence["run_id"],
+    "subject_id": evidence["subject_id"],
+    "pushed": evidence["pushed"],
+    "production_storage_state": evidence["production_storage_state"],
+    "underlying_functional_qa": evidence["underlying_functional_qa"],
+    "manual_qa_status": evidence["manual_qa_status"],
+    "operator_qa": evidence["operator_qa"],
     "generated_by": "notify-proof-dir-complete.sh"
 }
 

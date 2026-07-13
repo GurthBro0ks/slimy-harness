@@ -1,0 +1,28 @@
+{
+  "proof_basename": "proof_harness_growth_iteration1_isolated_qa_rerun_20260713T113502Z",
+  "result": "PHASE=harness-growth-iteration1-isolated-qa-rerun-after-repository-subject-repair\nRESULT=PASS\nTARGET_MACHINE=NUC1\nTARGET_REPO=/home/slimy/slimy-harness\nBASE_IMPLEMENTATION_COMMIT=36091a17eaf9da8fe017cf1bfe67472d8518baf0\nREPAIR_COMMIT=646097f6ac0933d490ae837ff52e450725648cbe\nCOMMIT_SHA=646097f6ac0933d490ae837ff52e450725648cbe\nPUSHED=no\nRUN_ID_CREATED=run_20260713T113521654589Z_ad61482501b14b4496c4278e4633a745\nSUBJECT_ID_CREATED=slimy-harness@646097f6ac0933d490ae837ff52e450725648cbe\nSTARTED_AT=2026-07-13T11:35:02Z\nCOMPLETED_AT=2026-07-13T11:44:02Z\nUNDERLYING_FUNCTIONAL_QA=PASS\nMANUAL_QA_STATUS=pending_owner_review\nOPERATOR_QA=pending_owner_review\nSTORAGE_ACCEPTED_FOR_PRODUCTION=no\nNEXT_STEP=Owner reviews the protected QA report. If OPERATOR_QA=PASS, run a separate Claude closeout and guarded push for commits 36091a17 and 646097f6 before Iteration 2.\n",
+  "artifact_files": [
+    "AUTHORITY_ACCEPTANCE_CHECK.txt", "CLI_HELP.txt", "COLD_PROCESS_VALIDATION.txt",
+    "CONFLICT_REPLAY_OUTPUT.txt", "CORRUPTION_VALIDATION.txt", "CREATE_NOTIFICATION_BOUNDARY.txt",
+    "CREATE_OUTPUT.txt", "EXACT_REPLAY_OUTPUT.txt", "HISTORICAL_INTEGRITY.txt",
+    "INVALID_GENERAL_INPUTS.txt", "INVALID_REPOSITORY_TESTS.txt", "NUC2_NOTIFIER_SYNC_AUDIT.txt",
+    "OWNER_REVIEW_SUMMARY.md", "PATH_TRAVERSAL_TEST.txt", "PRODUCTION_BOUNDARY.txt",
+    "PROMPT_CONTRACT_RECONCILIATION.md", "PROPOSED_STATE_NOTE.md", "QA_ROOT_RECORD.md",
+    "REPORT_HANDOFF.md", "RESULT.md", "SOURCE_CHAIN_VERIFICATION.md", "VALIDATE_OUTPUT.txt",
+    "branch-state-after.txt", "branch-state-before.txt", "changed-files.txt", "collision-tests.txt",
+    "command-log.txt", "concurrency-tests.txt", "focused-tests.txt", "full-tests.txt", "git-after.txt",
+    "git-before.txt", "harness-metadata.json", "harness-metadata.resolved.json", "harness-validation.txt",
+    "manual-qa-checklist.md", "model-recommendation.txt", "notification-dedupe-postcheck.txt",
+    "notification-dedupe-precheck.txt", "notification-dry-run.txt", "notification-live.txt",
+    "notification-status.txt", "report-auth-validation.txt", "runtime-status.txt",
+    "schema-validation.txt", "secret-scan-summary.txt", "torn-write-tests.txt"
+  ],
+  "contents": {
+    "focused-tests.txt": "33 passed in 4.89s\n",
+    "full-tests.txt": "83 passed in 6.20s\n",
+    "harness-validation.txt": "Results: 145 passed | 1 warnings | 0 failures\n",
+    "collision-tests.txt": "1 passed in 0.34s\n",
+    "concurrency-tests.txt": "1 passed in 0.40s\n",
+    "torn-write-tests.txt": "1 passed in 0.32s\n"
+  }
+}

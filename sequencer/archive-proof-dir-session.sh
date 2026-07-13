@@ -19,6 +19,7 @@ OPT_SOURCE_HOSTNAME=""
 OPT_COMMIT=""
 OPT_STATUS=""
 OPT_SUMMARY=""
+OPT_NEXT_STEP=""
 NO_INDEX=0
 
 usage() {
@@ -41,6 +42,7 @@ Options:
   --commit HASH           Commit hash
   --status STATUS         Task status
   --summary TEXT          Task summary
+  --next-step TEXT        Next recommended action for the report projection
   --sessions-dir PATH     Session archive directory
   --index-output PATH     Safe session index output path
   --no-index              Archive only; do not regenerate index
@@ -96,6 +98,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --summary)
       OPT_SUMMARY="${2:-}"
+      shift 2
+      ;;
+    --next-step)
+      OPT_NEXT_STEP="${2:-}"
       shift 2
       ;;
     --sessions-dir)
@@ -232,6 +238,8 @@ PROOF_DIR="$PROOF_DIR" \
 PROOF_BASENAME="$PROOF_BASENAME" \
 NOW_ISO="$NOW_ISO" \
 PUBLIC_REPORT_URL="$PUBLIC_REPORT_URL" \
+ARCHIVE_PATH="$ARCHIVE_PATH" \
+SEQUENCER_DIR="$SEQUENCER_DIR" \
 OPT_FEATURE_ID="$OPT_FEATURE_ID" \
 OPT_TASK_TITLE="$OPT_TASK_TITLE" \
 OPT_STATUS="$OPT_STATUS" \
@@ -242,6 +250,7 @@ OPT_REPO_NAME="$OPT_REPO_NAME" \
 OPT_REPO_PATH="$OPT_REPO_PATH" \
 OPT_COMMIT="$OPT_COMMIT" \
 OPT_SUMMARY="$OPT_SUMMARY" \
+OPT_NEXT_STEP="$OPT_NEXT_STEP" \
 INFERRED_FEATURE_ID="$REPORT_SLUG" \
 INFERRED_STATUS="completed" \
 INFERRED_SOURCE_NUC="$INFERRED_NUC" \
@@ -254,7 +263,11 @@ python3 > "$TMP_REPORT" <<'PY'
 import json
 import os
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, os.environ["SEQUENCER_DIR"])
+from proof_report_evidence import collect_report_evidence
 
 SAFE_METADATA_KEYS = {
     "feature_id",
@@ -444,6 +457,16 @@ report_url = os.environ["PUBLIC_REPORT_URL"]
 result_fields = parse_result_fields(result_file)
 metadata = load_metadata(metadata_file)
 
+existing = {}
+archive_path = Path(os.environ["ARCHIVE_PATH"])
+if archive_path.is_file():
+    try:
+        loaded = json.loads(archive_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            existing = loaded
+    except Exception:
+        existing = {}
+
 status = pick("status", "RESULT", "completed")
 if status.upper() in {"PASS", "WARN", "FAIL"}:
     status = status.lower()
@@ -453,8 +476,18 @@ summary = pick("summary", "SUMMARY", f"Agent completed. Proof: {basename}")
 repo_name = pick("repo_name", "TARGET_REPO", "unknown")
 if repo_name.startswith("/"):
     repo_name = Path(repo_name).name
+report_timestamp = safe_string(existing.get("timestamp")) or now
+evidence = collect_report_evidence(
+    proof_dir,
+    result_file,
+    status,
+    report_timestamp,
+    summary,
+    os.environ.get("OPT_NEXT_STEP", ""),
+)
 report = {
-    "session_id": now,
+    "report_schema_version": "2",
+    "session_id": safe_string(existing.get("session_id")) or now,
     "agent": pick("agent", None, "opencode"),
     "nuc": pick("source_nuc", "TARGET_MACHINE", "unknown").lower(),
     "source_nuc": pick("source_nuc", "TARGET_MACHINE", "unknown").lower(),
@@ -470,21 +503,36 @@ report = {
     "status": status or "completed",
     "result": result_fields.get("RESULT", status),
     "summary": summary,
-    "changes": safe_proof_files(proof_dir),
-    "tests": classify_tests(result_fields, status),
+    # Compatibility alias for deployed legacy renderers. New renderers use
+    # artifacts.displayed_files and label the count as proof files.
+    "changes": evidence["artifacts"]["displayed_files"],
+    "tests": evidence["tests"],
+    "validation_summary": evidence["validation_summary"],
+    "artifacts": evidence["artifacts"],
     "blockers": [],
-    "recommendation": {"next_feature_id": None, "reasoning": "", "risk_notes": ""},
+    "recommendation": {"next_feature_id": None, "reasoning": evidence["next_action"], "risk_notes": ""},
+    "next_action": evidence["next_action"],
     "kb_learnings": [],
-    "duration_minutes": 0,
-    "timestamp": now,
-    "created_at": now,
-    "archived_at": now,
+    "duration_minutes": evidence["duration"]["duration_minutes"],
+    "duration_source": evidence["duration"]["duration_source"],
+    "started_at": evidence["duration"]["started_at"],
+    "completed_at": evidence["duration"]["completed_at"],
+    "timestamp": report_timestamp,
+    "created_at": safe_string(existing.get("created_at")) or report_timestamp,
+    "archived_at": safe_string(existing.get("archived_at")) or report_timestamp,
     "proof_dir": proof_dir,
     "proof_basename": basename,
     "report_url": report_url,
     "discord_sent": bool_value(result_fields.get("DISCORD_SENT", "no")),
     "notify_mode": result_fields.get("NOTIFY_MODE", "archive_only"),
     "dedupe_result": result_fields.get("DEDUPE_RESULT", "not_checked"),
+    "run_id": evidence["run_id"],
+    "subject_id": evidence["subject_id"],
+    "pushed": evidence["pushed"],
+    "production_storage_state": evidence["production_storage_state"],
+    "underlying_functional_qa": evidence["underlying_functional_qa"],
+    "manual_qa_status": evidence["manual_qa_status"],
+    "operator_qa": evidence["operator_qa"],
     "services_restarted": bool_value(result_fields.get("SERVICES_RESTARTED", "no")),
     "caddy_changed": bool_value(result_fields.get("CADDY_CHANGED", "no")),
     "dns_changed": bool_value(result_fields.get("DNS_CHANGED", "no")),
