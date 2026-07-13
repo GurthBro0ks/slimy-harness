@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.slimyai.xyz/schema/acceptance-decision.v1.schema.json",
+  "title": "Slimy Harness isolated acceptance decision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "schema_id", "ledger_entry_type", "acceptance_id", "decision",
+    "run_id", "run_record_path", "subject", "scope", "actor_id", "authority",
+    "evidence", "limitations", "unresolved", "reason", "supersedes_acceptance_id",
+    "effective_at", "recorded_at", "record_sequence", "production_acceptance_enabled",
+    "payload_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "schema_id": { "const": "slimy-harness.acceptance-decision.v1" },
+    "ledger_entry_type": { "const": "ACCEPTANCE_DECISION" },
+    "acceptance_id": {
+      "type": "string",
+      "pattern": "^acceptance_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$"
+    },
+    "decision": {
+      "enum": ["ACCEPTED", "CONDITIONALLY_ACCEPTED", "REJECTED", "SUPERSEDED"]
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$"
+    },
+    "run_record_path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_type", "subject_id"],
+      "properties": {
+        "subject_type": {
+          "enum": ["run", "feature", "policy", "waiver", "document", "deviation", "repository"]
+        },
+        "subject_id": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "scope": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "actor_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority_type", "authority_ref", "authority_scope", "authority_digest",
+        "artifact_path", "issued_at", "effective_at", "expires_at",
+        "authority_authentication", "production_authority_verification"
+      ],
+      "properties": {
+        "authority_type": { "const": "test_fixture" },
+        "authority_ref": { "type": "string", "pattern": "^fixture://[a-z0-9][a-z0-9._/@:-]{2,255}$" },
+        "authority_scope": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "authority_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "artifact_path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "issued_at": { "type": "string", "format": "date-time" },
+        "effective_at": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": ["string", "null"], "format": "date-time" },
+        "authority_authentication": { "const": "TEST_FIXTURE_ONLY" },
+        "production_authority_verification": { "const": "NOT_IMPLEMENTED" }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_type", "evidence_ref", "evidence_digest", "source_run_id", "subject",
+          "validation_summary", "evidence_created_at", "manifest_path", "artifact_path"
+        ],
+        "properties": {
+          "evidence_type": { "enum": ["proof_manifest", "qa_record", "test_report"] },
+          "evidence_ref": { "type": "string", "pattern": "^(proof|qa|test)://[a-z0-9][a-z0-9._/@:-]{2,255}$" },
+          "evidence_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "source_run_id": { "type": "string", "pattern": "^run_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$" },
+          "subject": { "$ref": "#/$defs/subject" },
+          "validation_summary": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "evidence_created_at": { "type": "string", "format": "date-time" },
+          "manifest_path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "artifact_path": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "unresolved": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "reason": { "type": ["string", "null"], "maxLength": 2048 },
+    "supersedes_acceptance_id": {
+      "type": ["string", "null"],
+      "pattern": "^acceptance_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$"
+    },
+    "effective_at": { "type": "string", "format": "date-time" },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "record_sequence": { "type": "integer", "minimum": 1 },
+    "production_acceptance_enabled": { "const": false },
+    "payload_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "$defs": {
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_type", "subject_id"],
+      "properties": {
+        "subject_type": {
+          "enum": ["run", "feature", "policy", "waiver", "document", "deviation", "repository"]
+        },
+        "subject_id": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "decision": { "const": "CONDITIONALLY_ACCEPTED" } } },
+      "then": { "properties": { "limitations": { "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "decision": { "enum": ["REJECTED", "SUPERSEDED"] } } },
+      "then": { "properties": { "reason": { "type": "string", "minLength": 1 } } }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "SUPERSEDED" } } },
+      "then": { "properties": { "supersedes_acceptance_id": { "type": "string" } } }
+    }
+  ]
+}
