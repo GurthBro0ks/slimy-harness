@@ -22,11 +22,15 @@ from typing import Any, Callable
 DEFAULT_ROOT = Path("/home/slimy/harness-logs/run-records")
 SCHEMA_ID = "slimy-harness.run-created.v1"
 SCHEMA_VERSION = 1
-SUBJECT_TYPES = frozenset({"run", "feature", "policy", "waiver", "document", "deviation"})
+SUBJECT_TYPES = frozenset({"run", "feature", "policy", "waiver", "document", "deviation", "repository"})
 RUN_ID_RE = re.compile(r"^run_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$")
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$")
 SHA_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 SUBJECT_ID_RE = re.compile(r"^[^\s\x00-\x1f\x7f]{1,256}$")
+REPOSITORY_SUBJECT_RE = re.compile(
+    r"^(?P<repository>[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?)@"
+    r"(?P<head_sha>[0-9a-f]{40}(?:[0-9a-f]{24})?)$"
+)
 EXPECTED_KEYS = {
     "actor",
     "authority",
@@ -91,6 +95,13 @@ def normalize_subject(subject_type: str, subject_id: str | None, run_id: str) ->
     raw_id = run_id if subject_id is None and normalized_type == "run" else subject_id
     if raw_id is None:
         raise RunRecordError("subject_id is required unless subject_type=run")
+    if normalized_type == "repository":
+        normalized_id = unicodedata.normalize("NFC", raw_id)
+        if normalized_id != raw_id or not REPOSITORY_SUBJECT_RE.fullmatch(normalized_id):
+            raise RunRecordError(
+                "repository subject_id must be <repository-slug>@<full-lowercase-commit-sha>"
+            )
+        return normalized_type, normalized_id
     normalized_id = unicodedata.normalize("NFC", raw_id.strip())
     if not SUBJECT_ID_RE.fullmatch(normalized_id):
         raise RunRecordError("subject_id must be 1-256 non-whitespace, non-control characters")
@@ -139,6 +150,12 @@ def validate_record(record: Any) -> dict[str, Any]:
     _require_string(repository["remote_url"], "repository.remote_url", maximum=2048)
     if not isinstance(repository["head_sha"], str) or not SHA_RE.fullmatch(repository["head_sha"]):
         raise RunRecordError("repository.head_sha must be a lowercase SHA-1 or SHA-256")
+    if record["subject_type"] == "repository":
+        expected_subject_id = f"{record['project_id']}@{repository['head_sha']}"
+        if record["subject_id"] != expected_subject_id:
+            raise RunRecordError(
+                "repository subject_id must bind project_id and repository.head_sha exactly"
+            )
     machine = record["machine"]
     if not isinstance(machine, dict) or set(machine) != {"hostname", "id"}:
         raise RunRecordError("machine must contain exactly id and hostname")
@@ -361,8 +378,15 @@ def validate_store(root: Path, *, quarantine_partials: bool = False) -> tuple[in
 def add_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--run-id")
-    parser.add_argument("--subject-type", required=True)
-    parser.add_argument("--subject-id")
+    parser.add_argument(
+        "--subject-type",
+        required=True,
+        help="Closed namespace: deviation, document, feature, policy, repository, run, waiver.",
+    )
+    parser.add_argument(
+        "--subject-id",
+        help="Repository subjects use REPOSITORY_SLUG@FULL_LOWERCASE_COMMIT_SHA.",
+    )
     parser.add_argument("--project-id", required=True)
     parser.add_argument("--repository-path", type=Path, required=True)
     parser.add_argument("--repository-remote", required=True)
@@ -403,7 +427,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     record = build_record(args)
     result, path = create_record(args.root, record)
-    print(f"create={result} run_id={record['run_id']} record={path}")
+    print(
+        f"create={result} run_id={record['run_id']} "
+        f"subject_type={record['subject_type']} subject_id={record['subject_id']} record={path}"
+    )
     return 0
 
 

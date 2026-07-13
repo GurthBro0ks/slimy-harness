@@ -15,7 +15,7 @@
     "record_type": { "const": "CREATED" },
     "sequence": { "const": 1 },
     "run_id": { "type": "string", "pattern": "^run_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$" },
-    "subject_type": { "enum": ["run", "feature", "policy", "waiver", "document", "deviation"] },
+    "subject_type": { "enum": ["run", "feature", "policy", "waiver", "document", "deviation", "repository"] },
     "subject_id": { "type": "string", "minLength": 1, "maxLength": 256 },
     "project_id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$" },
     "repository": {
@@ -41,5 +41,20 @@
     "authority": { "type": "string", "minLength": 1, "maxLength": 1024 },
     "created_at": { "type": "string", "format": "date-time" },
     "payload_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "subject_type": { "const": "repository" } },
+        "required": ["subject_type"]
+      },
+      "then": {
+        "properties": {
+          "subject_id": {
+            "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?@[0-9a-f]{40}([0-9a-f]{24})?$"
+          }
+        }
+      }
+    }
+  ]
 }

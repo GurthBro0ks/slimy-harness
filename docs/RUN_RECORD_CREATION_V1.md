@@ -14,6 +14,15 @@ Acceptance Ledger specification.
   claim, directory `fsync`, and deterministic re-read validation.
 - Exact byte-for-byte creation replay is an idempotent success. The same
   `RUN_ID` with any different canonical content is a collision and is refused.
+- The bounded Iteration 1 subject namespace adds `repository`. Its canonical,
+  revision-bound identity is `<repository-slug>@<full-lowercase-commit-sha>`.
+  The slug is the record's `project_id`, and the full 40- or 64-hex SHA is the
+  record's `repository.head_sha`. For example,
+  `slimy-harness@36091a17eaf9da8fe017cf1bfe67472d8518baf0`. This is an
+  Iteration 1 behavior, not a permanent global repository identity standard.
+  It is independent of checkout path, hostname, and machine, and deliberately
+  refuses vague revisions, short SHAs, casing changes, path separators, control
+  characters, and non-canonical separators.
 - The store begins empty. Migration and backfill are deferred; no existing
   history is inferred or imported.
 - Rollback is additive: stop invoking or trusting this store. Existing state
@@ -36,7 +45,8 @@ digest-mismatched canonical records are reported and never repaired silently.
 ## QA and deferred gates
 
 Automated tests cover generated identity shape/uniqueness, schema round-trip,
-subject normalization and namespace refusal, missing authority refusal, exact
+subject normalization and namespace refusal, canonical repository identity and
+invalid repository refusal without mutation, missing authority refusal, exact
 replay, conflicting and concurrent collision refusal, malformed/corrupt record
 detection, and killed-mid-write quarantine.
 

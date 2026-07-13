@@ -22,6 +22,7 @@ SPEC.loader.exec_module(store)
 RUN_ID = "run_20260712T180000000000Z_0123456789abcdef0123456789abcdef"
 CREATED_AT = "2026-07-12T18:00:00.000000Z"
 HEAD = "1" * 40
+REPOSITORY_SUBJECT = f"slimy-harness@{HEAD}"
 
 
 def cli(*arguments: str) -> subprocess.CompletedProcess[str]:
@@ -37,6 +38,15 @@ def create_args(root: Path, *extra: str) -> list[str]:
         "--actor", "codex-gpt5", "--authority", "live-chat:iteration1",
         "--created-at", CREATED_AT, *extra,
     ]
+
+
+def repository_args(root: Path, *extra: str) -> list[str]:
+    return create_args(
+        root,
+        "--subject-type", "repository",
+        "--subject-id", REPOSITORY_SUBJECT,
+        *extra,
+    )
 
 
 def record_path(root: Path) -> Path:
@@ -76,6 +86,95 @@ def test_subject_is_normalized_and_unknown_namespace_refused(tmp_path: Path) -> 
     result = cli(*rejected)
     assert result.returncode == 1
     assert "unknown subject_type refused" in result.stderr
+
+
+def test_repository_subject_create_output_and_cold_validation(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    created = cli(*repository_args(root))
+    assert created.returncode == 0, created.stderr
+    assert "create=CREATED" in created.stdout
+    assert "subject_type=repository" in created.stdout
+    assert f"subject_id={REPOSITORY_SUBJECT}" in created.stdout
+    record = json.loads(record_path(root).read_text())
+    assert record["subject_type"] == "repository"
+    assert record["subject_id"] == REPOSITORY_SUBJECT
+    assert record["subject_id"] == f"{record['project_id']}@{record['repository']['head_sha']}"
+    cold = cli("validate-store", "--root", str(root))
+    assert cold.returncode == 0, cold.stderr
+    assert "record_count=1" in cold.stdout
+
+
+@pytest.mark.parametrize(
+    "subject_id",
+    [
+        "",
+        "latest",
+        "slimy-harness",
+        "slimy-harness@1234567",
+        f"slimy-harness@{'g' * 40}",
+        f"../slimy-harness@{HEAD}",
+        f"slimy/harness@{HEAD}",
+        f"slimy-harness@@{HEAD}",
+        f"Slimy-Harness@{HEAD}",
+        f"slimy-harness@{'A' * 40}",
+        f"slimy-harness\n@{HEAD}",
+        f"{'a' * 129}@{HEAD}",
+    ],
+)
+def test_invalid_repository_subject_is_refused_without_mutation(
+    tmp_path: Path, subject_id: str
+) -> None:
+    root = tmp_path / "invalid"
+    result = cli(*repository_args(root, "--subject-id", subject_id))
+    assert result.returncode == 1
+    assert "repository subject_id" in result.stderr
+    assert not root.exists()
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (("--project-id", "other-project"), "bind project_id"),
+        (("--repository-head", "2" * 40), "bind project_id"),
+    ],
+)
+def test_repository_subject_must_match_record_repository_identity(
+    tmp_path: Path, arguments: tuple[str, ...], message: str
+) -> None:
+    root = tmp_path / "mismatch"
+    result = cli(*repository_args(root, *arguments))
+    assert result.returncode == 1
+    assert message in result.stderr
+    assert not root.exists()
+
+
+@pytest.mark.parametrize(
+    "subject_type",
+    ["run", "feature", "policy", "waiver", "document", "deviation"],
+)
+def test_existing_subject_types_remain_unchanged(tmp_path: Path, subject_type: str) -> None:
+    root = tmp_path / subject_type
+    subject_id = RUN_ID if subject_type == "run" else "subject-42"
+    result = cli(
+        *create_args(
+            root,
+            "--subject-type", subject_type,
+            "--subject-id", subject_id,
+        )
+    )
+    assert result.returncode == 0, result.stderr
+    record = json.loads(record_path(root).read_text())
+    assert record["subject_type"] == subject_type
+    assert record["subject_id"] == subject_id
+
+
+def test_cli_help_and_schema_list_repository_subject() -> None:
+    help_result = cli("create", "--help")
+    assert help_result.returncode == 0
+    assert "repository" in help_result.stdout
+    assert "REPOSITORY_SLUG@FULL_LOWERCASE_COMMIT_SHA" in help_result.stdout
+    schema = json.loads((ROOT / "schema" / "run-record-created.v1.schema.json").read_text())
+    assert "repository" in schema["properties"]["subject_type"]["enum"]
 
 
 def test_missing_authority_is_refused_without_store_write(tmp_path: Path) -> None:
