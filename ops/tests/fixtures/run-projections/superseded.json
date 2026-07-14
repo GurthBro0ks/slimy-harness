@@ -1,0 +1,84 @@
+{
+  "schema_version": "run-projection.v1",
+  "generated_at": "2026-07-14T12:00:00Z",
+  "generated_by": "rw0-fixture",
+  "source_machine": "nuc1",
+  "run": {
+    "run_id": "run_20260714T090000000003Z_00000000000000000000000000000003",
+    "subject_type": "repository",
+    "subject_id": "rw0-synthetic@0000000000000000000000000000000000000000",
+    "project_id": "rw0-synthetic",
+    "phase": "rw0-synthetic-superseded",
+    "machine": "NUC1",
+    "model": "GPT/Codex synthetic",
+    "actor": "synthetic-agent",
+    "created_at": "2026-07-14T09:00:00Z",
+    "completed_at": "2026-07-14T09:20:00Z",
+    "duration_minutes": 20,
+    "duration_source": "synthetic-fixture"
+  },
+  "state": {
+    "execution": "COMPLETED",
+    "evidence": "CAPTURED",
+    "review": "PASS",
+    "acceptance": "SUPERSEDED",
+    "owner_action": "DONE",
+    "notification": "NOT_SENT",
+    "stage": "Synthetic superseded fixture state",
+    "blocked": false,
+    "warnings": ["SUPERSEDED is fixture data and carries no production authority."],
+    "blockers": []
+  },
+  "flags": {
+    "pushed": false,
+    "deployed": false,
+    "production_storage_active": false,
+    "test_fixture_only": true,
+    "production_acceptance_enabled": false
+  },
+  "validation": {
+    "summary": "Synthetic checks: 1 passed, 0 failed, 1 total.",
+    "checks": [
+      {
+        "id": "synthetic-contract",
+        "name": "Synthetic contract check",
+        "status": "PASS",
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "source_artifact": "synthetic-contract.txt"
+      }
+    ],
+    "deep_validation": "NOT_IMPLEMENTED",
+    "deep_validation_at": null
+  },
+  "evidence": {
+    "summary": "Synthetic fixture evidence only.",
+    "status": "CAPTURED",
+    "checked_at": "2026-07-14T09:21:00Z",
+    "proof_dir": "/tmp/rw0-fixture-superseded"
+  },
+  "artifacts": {
+    "count": 1,
+    "displayed_files": ["synthetic-contract.txt"],
+    "filter_explanation": "Only a synthetic artifact name is displayed."
+  },
+  "acceptance": {
+    "read_at": null,
+    "acceptance_id": "synthetic-acceptance-fixture-0003",
+    "scope": "synthetic-fixture-only",
+    "limitations": ["This superseded state is fixture-only and is not a production decision."],
+    "superseded_by": "run_20260714T100000000002Z_00000000000000000000000000000002",
+    "source": "not_production_active"
+  },
+  "links": {
+    "report_url": null,
+    "workspace_path": "/runs/run_20260714T090000000003Z_00000000000000000000000000000003"
+  },
+  "next_action": "Use the newer synthetic fixture when testing superseded-state navigation.",
+  "continuation": null,
+  "integrity": {
+    "source_refs": ["rw0-fixture:synthetic-only"],
+    "digest": null
+  }
+}

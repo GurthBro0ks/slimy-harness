@@ -1,0 +1,74 @@
+{
+  "schema_version": "run-projection.v1",
+  "generated_at": "2026-07-14T10:00:00Z",
+  "generated_by": "rw0-fixture",
+  "source_machine": "nuc1",
+  "run": {
+    "run_id": "run_20260714T095800000001Z_00000000000000000000000000000001",
+    "subject_type": "repository",
+    "subject_id": "rw0-synthetic@0000000000000000000000000000000000000000",
+    "project_id": "rw0-synthetic",
+    "phase": "rw0-synthetic-active",
+    "machine": "NUC1",
+    "model": null,
+    "actor": "synthetic-agent",
+    "created_at": "2026-07-14T09:58:00Z",
+    "completed_at": null,
+    "duration_minutes": null,
+    "duration_source": "not_recorded"
+  },
+  "state": {
+    "execution": "ACTIVE",
+    "evidence": "PENDING",
+    "review": "NOT_RUN",
+    "acceptance": "NO_DECISION",
+    "owner_action": "NONE_REQUIRED",
+    "notification": "NOT_SENT",
+    "stage": "Synthetic execution in progress",
+    "blocked": false,
+    "warnings": [],
+    "blockers": []
+  },
+  "flags": {
+    "pushed": false,
+    "deployed": false,
+    "production_storage_active": false,
+    "test_fixture_only": true,
+    "production_acceptance_enabled": false
+  },
+  "validation": {
+    "summary": "Synthetic active fixture; validation has not run.",
+    "checks": [],
+    "deep_validation": "NOT_IMPLEMENTED",
+    "deep_validation_at": null
+  },
+  "evidence": {
+    "summary": "Synthetic evidence is incomplete while the fixture run is active.",
+    "status": "NOT_REVERIFIED",
+    "checked_at": null,
+    "proof_dir": "/tmp/rw0-fixture-active"
+  },
+  "artifacts": {
+    "count": 0,
+    "displayed_files": [],
+    "filter_explanation": "No synthetic artifacts are listed for the active fixture."
+  },
+  "acceptance": {
+    "read_at": null,
+    "acceptance_id": null,
+    "scope": null,
+    "limitations": ["Synthetic fixture only; no authority or acceptance is asserted."],
+    "superseded_by": null,
+    "source": "not_production_active"
+  },
+  "links": {
+    "report_url": null,
+    "workspace_path": "/runs/run_20260714T095800000001Z_00000000000000000000000000000001"
+  },
+  "next_action": "Allow the synthetic run to finish before reviewing fixture validation.",
+  "continuation": null,
+  "integrity": {
+    "source_refs": ["rw0-fixture:synthetic-only"],
+    "digest": null
+  }
+}

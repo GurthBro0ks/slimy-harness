@@ -1,0 +1,84 @@
+{
+  "schema_version": "run-projection.v1",
+  "generated_at": "2026-07-14T11:00:00Z",
+  "generated_by": "rw0-fixture",
+  "source_machine": "nuc1",
+  "run": {
+    "run_id": "run_20260714T100000000002Z_00000000000000000000000000000002",
+    "subject_type": "repository",
+    "subject_id": "rw0-synthetic@0000000000000000000000000000000000000000",
+    "project_id": "rw0-synthetic",
+    "phase": "rw0-synthetic-owner-qa-pending",
+    "machine": "NUC1",
+    "model": "GPT/Codex synthetic",
+    "actor": "synthetic-agent",
+    "created_at": "2026-07-14T10:00:00Z",
+    "completed_at": "2026-07-14T10:30:00Z",
+    "duration_minutes": 30,
+    "duration_source": "synthetic-fixture"
+  },
+  "state": {
+    "execution": "COMPLETED",
+    "evidence": "CAPTURED",
+    "review": "PASS",
+    "acceptance": "NO_DECISION",
+    "owner_action": "OWNER_QA_PENDING",
+    "notification": "NOT_SENT",
+    "stage": "Synthetic technical validation complete; owner QA pending",
+    "blocked": false,
+    "warnings": [],
+    "blockers": []
+  },
+  "flags": {
+    "pushed": false,
+    "deployed": false,
+    "production_storage_active": false,
+    "test_fixture_only": true,
+    "production_acceptance_enabled": false
+  },
+  "validation": {
+    "summary": "Synthetic checks: 2 passed, 0 failed, 2 total.",
+    "checks": [
+      {
+        "id": "synthetic-focused",
+        "name": "Synthetic focused checks",
+        "status": "PASS",
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "source_artifact": "focused-pytest.txt"
+      }
+    ],
+    "deep_validation": "NOT_IMPLEMENTED",
+    "deep_validation_at": null
+  },
+  "evidence": {
+    "summary": "Synthetic fixture evidence is present but is not production evidence.",
+    "status": "CAPTURED",
+    "checked_at": "2026-07-14T10:31:00Z",
+    "proof_dir": "/tmp/rw0-fixture-owner-qa-pending"
+  },
+  "artifacts": {
+    "count": 2,
+    "displayed_files": ["focused-pytest.txt", "manual-qa-checklist.md"],
+    "filter_explanation": "Only synthetic fixture artifact names are displayed."
+  },
+  "acceptance": {
+    "read_at": null,
+    "acceptance_id": null,
+    "scope": null,
+    "limitations": ["Technical PASS is not owner acceptance."],
+    "superseded_by": null,
+    "source": "not_production_active"
+  },
+  "links": {
+    "report_url": null,
+    "workspace_path": "/runs/run_20260714T100000000002Z_00000000000000000000000000000002"
+  },
+  "next_action": "Owner reviews the synthetic fixture; no acceptance decision has been made.",
+  "continuation": null,
+  "integrity": {
+    "source_refs": ["rw0-fixture:synthetic-only", "fixture-checks:synthetic"],
+    "digest": null
+  }
+}

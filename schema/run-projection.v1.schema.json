@@ -1,0 +1,464 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.slimyai.xyz/schema/run-projection.v1.schema.json",
+  "title": "Slimy Harness run projection v1",
+  "$comment": "Every field that asserts a fact about a run's canonical state must appear in the canonical-versus-projection matrix or is refused. Producer-provenance fields (schema_version, generated_at, generated_by, source_machine) and self-integrity fields (integrity.*) are explicitly exempt because they describe the projection file rather than canonical run state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "generated_by",
+    "source_machine",
+    "run",
+    "state",
+    "flags",
+    "validation",
+    "evidence",
+    "artifacts",
+    "acceptance",
+    "links",
+    "next_action",
+    "continuation",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": { "const": "run-projection.v1" },
+    "generated_at": { "$ref": "#/$defs/utcTimestamp" },
+    "generated_by": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._@/-]{0,255}$"
+    },
+    "source_machine": { "enum": ["nuc1", "nuc2"] },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "subject_type",
+        "subject_id",
+        "project_id",
+        "phase",
+        "machine",
+        "model",
+        "actor",
+        "created_at",
+        "completed_at",
+        "duration_minutes",
+        "duration_source"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/runId" },
+        "subject_type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+        },
+        "subject_id": { "$ref": "#/$defs/canonicalString256" },
+        "project_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"
+        },
+        "phase": { "$ref": "#/$defs/canonicalString256" },
+        "machine": { "$ref": "#/$defs/canonicalString256" },
+        "model": {
+          "oneOf": [
+            { "$ref": "#/$defs/canonicalString256" },
+            { "type": "null" }
+          ]
+        },
+        "actor": {
+          "oneOf": [
+            { "$ref": "#/$defs/canonicalString256" },
+            { "type": "null" }
+          ]
+        },
+        "created_at": { "$ref": "#/$defs/utcTimestamp" },
+        "completed_at": {
+          "oneOf": [
+            { "$ref": "#/$defs/utcTimestamp" },
+            { "type": "null" }
+          ]
+        },
+        "duration_minutes": {
+          "oneOf": [
+            { "type": "number", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "duration_source": { "$ref": "#/$defs/canonicalString256" }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution",
+        "evidence",
+        "review",
+        "acceptance",
+        "owner_action",
+        "notification",
+        "stage",
+        "blocked",
+        "warnings",
+        "blockers"
+      ],
+      "properties": {
+        "execution": {
+          "enum": ["CREATED", "ACTIVE", "INTERRUPTED", "COMPLETED", "FAILED", "CANCELLED", "UNKNOWN"]
+        },
+        "evidence": { "enum": ["PENDING", "CAPTURED", "INCOMPLETE", "UNAVAILABLE", "UNKNOWN"] },
+        "review": { "enum": ["NOT_RUN", "PASS", "WARN", "FAIL", "UNKNOWN"] },
+        "acceptance": {
+          "enum": ["NO_DECISION", "ACCEPTED", "CONDITIONALLY_ACCEPTED", "REJECTED", "SUPERSEDED", "UNKNOWN"]
+        },
+        "owner_action": {
+          "enum": ["NONE_REQUIRED", "OWNER_QA_PENDING", "OWNER_DECISION_PENDING", "DONE", "UNKNOWN"]
+        },
+        "notification": { "enum": ["NOT_SENT", "SENT", "DEDUPED", "RELAYED", "UNKNOWN"] },
+        "stage": {
+          "oneOf": [
+            { "$ref": "#/$defs/canonicalString500" },
+            { "type": "null" }
+          ]
+        },
+        "blocked": { "type": "boolean" },
+        "warnings": { "$ref": "#/$defs/boundedMessages" },
+        "blockers": { "$ref": "#/$defs/boundedMessages" }
+      }
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pushed",
+        "deployed",
+        "production_storage_active",
+        "test_fixture_only",
+        "production_acceptance_enabled"
+      ],
+      "properties": {
+        "pushed": { "$ref": "#/$defs/nullableBoolean" },
+        "deployed": { "$ref": "#/$defs/nullableBoolean" },
+        "production_storage_active": { "$ref": "#/$defs/nullableBoolean" },
+        "test_fixture_only": { "type": "boolean" },
+        "production_acceptance_enabled": { "type": "boolean" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "checks", "deep_validation", "deep_validation_at"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/canonicalString2000" },
+        "checks": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "name", "status", "passed", "failed", "total", "source_artifact"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "name": { "$ref": "#/$defs/canonicalString256" },
+              "status": { "$ref": "#/$defs/canonicalString256" },
+              "passed": { "type": "integer", "minimum": 0 },
+              "failed": { "type": "integer", "minimum": 0 },
+              "total": { "type": "integer", "minimum": 0 },
+              "source_artifact": { "$ref": "#/$defs/safeRelativePath" }
+            }
+          }
+        },
+        "deep_validation": { "enum": ["CURRENT", "STALE", "UNAVAILABLE", "FAILED", "NOT_IMPLEMENTED"] },
+        "deep_validation_at": {
+          "oneOf": [
+            { "$ref": "#/$defs/utcTimestamp" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "status", "checked_at", "proof_dir"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/canonicalString2000" },
+        "status": { "enum": ["CAPTURED", "NOT_REVERIFIED", "MISSING", "UNKNOWN"] },
+        "checked_at": {
+          "oneOf": [
+            { "$ref": "#/$defs/utcTimestamp" },
+            { "type": "null" }
+          ]
+        },
+        "proof_dir": {
+          "oneOf": [
+            { "$ref": "#/$defs/proofPath" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "displayed_files", "filter_explanation"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "displayed_files": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string",
+            "pattern": "^[^/\\\\\\u0000-\\u001f\\u007f]{1,255}$"
+          }
+        },
+        "filter_explanation": { "$ref": "#/$defs/canonicalString2000" }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["read_at", "acceptance_id", "scope", "limitations", "superseded_by", "source"],
+      "properties": {
+        "read_at": {
+          "oneOf": [
+            { "$ref": "#/$defs/utcTimestamp" },
+            { "type": "null" }
+          ]
+        },
+        "acceptance_id": { "$ref": "#/$defs/nullableCanonicalString256" },
+        "scope": { "$ref": "#/$defs/nullableCanonicalString500" },
+        "limitations": { "$ref": "#/$defs/boundedMessages" },
+        "superseded_by": { "$ref": "#/$defs/nullableCanonicalString256" },
+        "source": { "$ref": "#/$defs/canonicalString256" }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["report_url", "workspace_path"],
+      "properties": {
+        "report_url": {
+          "oneOf": [
+            { "$ref": "#/$defs/reportUrl" },
+            { "type": "null" }
+          ]
+        },
+        "workspace_path": { "$ref": "#/$defs/workspacePath" }
+      }
+    },
+    "next_action": {
+      "oneOf": [
+        { "$ref": "#/$defs/canonicalString2000" },
+        { "type": "null" }
+      ]
+    },
+    "continuation": {
+      "oneOf": [
+        { "$ref": "#/$defs/continuation" },
+        { "type": "null" }
+      ]
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_refs", "digest"],
+      "properties": {
+        "source_refs": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/canonicalString500" }
+        },
+        "digest": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "runId": {
+      "type": "string",
+      "pattern": "^run_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$"
+    },
+    "utcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z$"
+    },
+    "canonicalString256": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "canonicalString500": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "canonicalString2000": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "nullableCanonicalString256": {
+      "oneOf": [
+        { "$ref": "#/$defs/canonicalString256" },
+        { "type": "null" }
+      ]
+    },
+    "nullableCanonicalString500": {
+      "oneOf": [
+        { "$ref": "#/$defs/canonicalString500" },
+        { "type": "null" }
+      ]
+    },
+    "nullableBoolean": {
+      "oneOf": [
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
+    },
+    "boundedMessages": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/canonicalString500" }
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "absolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))/(?:[A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+/?$"
+    },
+    "proofPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))/(?:tmp|home/slimy/proofs)/[A-Za-z0-9._/-]+$"
+    },
+    "reportUrl": {
+      "type": "string",
+      "pattern": "^https://harness\\.slimyai\\.xyz/reports/sessions/[A-Za-z0-9._-]+$"
+    },
+    "workspacePath": {
+      "type": "string",
+      "pattern": "^/runs/run_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$"
+    },
+    "workspaceUrl": {
+      "type": "string",
+      "pattern": "^https://habitat\\.slimyai\\.xyz/runs/run_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$"
+    },
+    "continuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "project",
+        "repository_path",
+        "accepted_commit",
+        "machine",
+        "current_stage",
+        "proof_dir",
+        "report_url",
+        "workspace_url",
+        "what_passed",
+        "what_failed",
+        "blockers",
+        "unresolved_questions",
+        "manual_qa_state",
+        "authority_status",
+        "push_authorized",
+        "deploy_authorized",
+        "restart_authorized",
+        "prohibited_actions",
+        "next_bounded_mission",
+        "required_startup_files",
+        "required_validation",
+        "model_recommendation",
+        "writer_of_record",
+        "generated_at",
+        "source_projection_digest",
+        "handoff_complete"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/runId" },
+        "project": { "$ref": "#/$defs/canonicalString256" },
+        "repository_path": { "$ref": "#/$defs/absolutePath" },
+        "accepted_commit": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$" },
+            { "type": "null" }
+          ]
+        },
+        "machine": { "$ref": "#/$defs/canonicalString256" },
+        "current_stage": { "$ref": "#/$defs/canonicalString2000" },
+        "proof_dir": {
+          "oneOf": [
+            { "$ref": "#/$defs/proofPath" },
+            { "type": "null" }
+          ]
+        },
+        "report_url": {
+          "oneOf": [
+            { "$ref": "#/$defs/reportUrl" },
+            { "type": "null" }
+          ]
+        },
+        "workspace_url": { "$ref": "#/$defs/workspaceUrl" },
+        "what_passed": { "$ref": "#/$defs/canonicalString2000" },
+        "what_failed": { "$ref": "#/$defs/canonicalString2000" },
+        "blockers": { "$ref": "#/$defs/boundedMessages" },
+        "unresolved_questions": { "$ref": "#/$defs/boundedMessages" },
+        "manual_qa_state": { "$ref": "#/$defs/canonicalString256" },
+        "authority_status": { "$ref": "#/$defs/canonicalString256" },
+        "push_authorized": { "type": "boolean" },
+        "deploy_authorized": { "type": "boolean" },
+        "restart_authorized": { "type": "boolean" },
+        "prohibited_actions": { "$ref": "#/$defs/boundedMessages" },
+        "next_bounded_mission": { "$ref": "#/$defs/canonicalString2000" },
+        "required_startup_files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))/?[A-Za-z0-9._/-]+$"
+          }
+        },
+        "required_validation": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/canonicalString500" }
+        },
+        "model_recommendation": { "$ref": "#/$defs/canonicalString256" },
+        "writer_of_record": { "$ref": "#/$defs/canonicalString500" },
+        "generated_at": { "$ref": "#/$defs/utcTimestamp" },
+        "source_projection_digest": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "handoff_complete": { "type": "boolean" }
+      }
+    }
+  }
+}

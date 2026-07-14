@@ -1,0 +1,13 @@
+{
+  "schema_version": "run-projection.v1",
+  "generated_at": "2026-07-14T16:00:00Z",
+  "generated_by": "rw0-fixture",
+  "source_machine": "nuc1",
+  "run": {
+    "run_id": "run_20260714T155900000007Z_00000000000000000000000000000007"
+  },
+  "flags": {
+    "test_fixture_only": true,
+    "production_acceptance_enabled": false
+  },
+  "synthetic_note": "This intentionally malformed fixture contains no authority."

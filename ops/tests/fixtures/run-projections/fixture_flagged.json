@@ -1,0 +1,74 @@
+{
+  "schema_version": "run-projection.v1",
+  "generated_at": "2026-07-14T13:00:00Z",
+  "generated_by": "rw0-fixture",
+  "source_machine": "nuc1",
+  "run": {
+    "run_id": "run_20260714T125900000004Z_00000000000000000000000000000004",
+    "subject_type": "repository",
+    "subject_id": "rw0-synthetic@0000000000000000000000000000000000000000",
+    "project_id": "rw0-synthetic",
+    "phase": "rw0-synthetic-fixture-flags",
+    "machine": "NUC1",
+    "model": null,
+    "actor": null,
+    "created_at": "2026-07-14T12:59:00Z",
+    "completed_at": null,
+    "duration_minutes": null,
+    "duration_source": "not_recorded"
+  },
+  "state": {
+    "execution": "CREATED",
+    "evidence": "UNKNOWN",
+    "review": "UNKNOWN",
+    "acceptance": "UNKNOWN",
+    "owner_action": "UNKNOWN",
+    "notification": "UNKNOWN",
+    "stage": null,
+    "blocked": false,
+    "warnings": ["TEST_FIXTURE_ONLY=true", "production_acceptance_enabled=false"],
+    "blockers": []
+  },
+  "flags": {
+    "pushed": null,
+    "deployed": null,
+    "production_storage_active": false,
+    "test_fixture_only": true,
+    "production_acceptance_enabled": false
+  },
+  "validation": {
+    "summary": "UNKNOWN values remain explicit in this synthetic fixture.",
+    "checks": [],
+    "deep_validation": "UNAVAILABLE",
+    "deep_validation_at": null
+  },
+  "evidence": {
+    "summary": "No production evidence exists for this synthetic fixture.",
+    "status": "UNKNOWN",
+    "checked_at": null,
+    "proof_dir": "/tmp/rw0-fixture-flags"
+  },
+  "artifacts": {
+    "count": 0,
+    "displayed_files": [],
+    "filter_explanation": "Synthetic fixture contains no artifacts."
+  },
+  "acceptance": {
+    "read_at": null,
+    "acceptance_id": null,
+    "scope": null,
+    "limitations": ["Fixture flags must be rendered verbatim; production acceptance is disabled."],
+    "superseded_by": null,
+    "source": "not_production_active"
+  },
+  "links": {
+    "report_url": null,
+    "workspace_path": "/runs/run_20260714T125900000004Z_00000000000000000000000000000004"
+  },
+  "next_action": "Display fixture-only and production-disabled markers without coercing UNKNOWN.",
+  "continuation": null,
+  "integrity": {
+    "source_refs": ["rw0-fixture:synthetic-only"],
+    "digest": null
+  }
+}
