@@ -72,7 +72,7 @@
     "source": "not_production_active"
   },
   "links": {
-    "report_url": null,
+    "report_url": "https://harness.slimyai.xyz/reports/sessions/report-fixture-run-workspace-rw1.json",
     "workspace_path": "/runs/run_20260714T100000000002Z_00000000000000000000000000000002"
   },
   "next_action": "Owner reviews the synthetic fixture; no acceptance decision has been made.",

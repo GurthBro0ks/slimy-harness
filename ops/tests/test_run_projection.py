@@ -159,6 +159,15 @@ def test_all_valid_fixtures_are_explicitly_fixture_only_and_production_disabled(
         assert document["flags"]["production_storage_active"] is False
 
 
+def test_route_backed_fixture_has_safe_synthetic_report_link() -> None:
+    document = load_fixture("completed_owner_qa_pending.json")
+    assert document["links"]["report_url"] == (
+        "https://harness.slimyai.xyz/reports/sessions/"
+        "report-fixture-run-workspace-rw1.json"
+    )
+    assert load_fixture("active.json")["links"]["report_url"] is None
+
+
 def test_directory_mode_is_deterministic_and_bounded_to_json_files() -> None:
     first = run_projection.validate_target(FIXTURE_ROOT)
     second = run_projection.validate_target(FIXTURE_ROOT)
