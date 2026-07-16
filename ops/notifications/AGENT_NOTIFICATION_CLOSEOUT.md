@@ -1,131 +1,124 @@
 # Agent Notification Closeout
 
-This document defines when and how autonomous agent sessions must handle
-Discord harness notifications before closing.
+This runbook defines the explicit process boundary between Discord completion
+notifications and NUC2 report-artifact synchronization.
 
-## When Notification Is Required
+## Safety contract
 
-Every implementation, fix, or closeout session that creates a proof directory
-must handle notification before final response. This includes sessions that:
+`sequencer/notify-proof-dir-complete.sh` has no implicit action. The caller
+must choose exactly one mode:
 
-- Created or modified code, configs, or docs
-- Created a proof directory under `/tmp/proof_*`
-- Ran validation or tests as part of a harness task
+| Mode | Discord | NUC2 sync | Required authorization |
+|---|---:|---:|---|
+| `discord-only` | yes | no | `--discord-authorized` |
+| `sync-only` | no | yes | `--sync-authorized` |
+| `both` | yes | yes | both authorization flags |
 
-## When Notification Is Disabled
+With no `--mode`, the adapter returns `STATE=NO_ACTION` and exits 64 before
+creating a report, reading notification configuration, invoking a helper, or
+writing a dedupe marker. Modes are never inferred from webhook availability,
+hostname, relay configuration, or NUC2 availability.
 
-Notification may be skipped ONLY for:
+Real external actions require direct owner approval. A mode flag describes the
+requested process path; its corresponding authorization flag records that the
+caller has the separate approval for that action. `--dry-run` is redacted
+preflight only and performs no Discord transport, SSH, rsync, or marker write.
 
-- **Discovery/read-only sessions** that made no changes and created no proof
-  dir requiring notification (but must still include closeout fields in final
-  response)
-- **Sessions explicitly told not to notify** by the task prompt
-- **Safety hold**: when a webhook URL is found in logs, output, or files
-  (notification is blocked until the URL is rotated/regenerated)
+NUC1 owns and loads the Discord webhook at the latest possible point, inside
+`notify-session-complete.sh`. NUC2 never receives webhook material.
+`discord-only` never invokes the sync helper, SSH, rsync, SCP, or a NUC2 relay.
+`sync-only` never loads the webhook environment or invokes the Discord notifier
+or curl. `both` is explicit and records the two results separately.
 
-## NUC1 vs NUC2 Behavior
+## Exact-file sync allowlist
 
-| Aspect | NUC1 | NUC2 |
-|--------|------|------|
-| Webhook env | Present (sends directly) | Absent (must relay) |
-| Notifier script | `sequencer/notify-proof-dir-complete.sh` | Same script, relay path |
-| Relay required | No | Yes, via SSH to NUC1 |
-| Relay env key | Not needed | `HARNESS_NOTIFY_RELAY_HOST=nuc1` |
-| Dedupe markers | `.sent` files in notify-state | `.relay-sent` files in notify-state |
-| Webhook URL storage | In `.slimy-harness.env` | MUST NOT be stored on NUC2 |
+Sync modes require one or more `--sync-file PATH` arguments. The sync helper:
 
-## Required Final Fields
+- accepts at most eight regular `.json` files;
+- requires every file to be a direct child of the approved local sessions root;
+- resolves and verifies real paths;
+- rejects missing files, symlinks, directories, wildcards/globs, duplicates,
+  duplicate destination basenames, invalid JSON, and paths outside the root;
+- sends only the exact arguments to the fixed NUC2 sessions destination;
+- does not discover a directory, recurse, use `--delete`, or log file content;
+- logs only each basename and SHA-256 digest.
 
-Every agent session final response must include:
+The normal allowlist is the exact report JSON and exact
+`harness-session-index.json`. An unrelated third JSON file is not selected.
 
-```
-DISCORD_SENT=yes/no
-NOTIFY_MODE=runtime/relay/dry-run/disabled
-DEDUPE_RESULT=sent/skipped/not_checked
-REPORT_URL=https://harness.slimyai.xyz/reports/sessions/... or none
-NOTIFY_REASON=<sent, dedupe skipped, disabled by prompt, discovery-only, approved test required, or failure reason>
-```
+## Examples
 
-## Secret Safety Rules
-
-- Never print webhook URLs in logs, stdout, or proof files
-- Never dump `.env` files
-- Never store webhook URLs on NUC2
-- If a webhook URL appears anywhere in agent output, stop and recommend
-  rotation/regeneration without repeating the URL
-- The notifier scripts handle redaction internally; agents must not bypass this
-
-## Dedupe Behavior
-
-- Dedupe is file-based: `sha256(absolute_path + mtime + size)`
-- NUC1 uses `.sent` markers in `/home/slimy/harness-logs/notify-state/`
-- NUC2 uses `.relay-sent` markers in the same directory
-- If dedupe skips a notification, the agent must report the dedupe marker path
-- Use `--force` to bypass dedupe for manual retest only
-- Markers older than 30 days are garbage-collected automatically
-
-## Approved Report URL Format
-
-```
-https://harness.slimyai.xyz/reports/sessions/<filename>
-```
-
-Report URLs are owner-gated (Caddy 307 redirect to login). Unauthenticated
-access returns a redirect, not the report content.
-
-## Approved Notification Commands
-
-### NUC1 (direct send)
+Redacted Discord-only preflight:
 
 ```bash
-# Always dry-run first:
-bash /home/slimy/slimy-harness/sequencer/notify-proof-dir-complete.sh \
+bash sequencer/notify-proof-dir-complete.sh \
   --dry-run \
-  --proof-dir /tmp/proof_... \
-  --repo-path /path/to/repo \
-  --repo-name repo-name \
-  --feature-id feature-id \
-  --task-title "Task Title" \
-  --agent opencode \
-  --source-nuc nuc1 \
-  --status completed \
-  --summary "Brief summary"
-
-# Then send (remove --dry-run):
-bash /home/slimy/slimy-harness/sequencer/notify-proof-dir-complete.sh \
-  --proof-dir /tmp/proof_... \
-  --repo-path /path/to/repo \
-  --repo-name repo-name \
-  --feature-id feature-id \
-  --task-title "Task Title" \
-  --agent opencode \
-  --source-nuc nuc1 \
-  --status completed \
-  --summary "Brief summary"
+  --mode discord-only \
+  --proof-dir /tmp/proof_example
 ```
 
-### NUC2 (relay through NUC1)
-
-Same command with `--source-nuc nuc2`. The script detects the missing webhook
-and relays via SSH to `HARNESS_NOTIFY_RELAY_HOST`.
-
-## Validation Commands (read-only, no sends)
+Separately authorized Discord-only action:
 
 ```bash
-ops/harness-ops notify status       # Check notification pipeline health
-ops/harness-ops notify dry-run      # Preview a notification without sending
-ops/harness-ops notify dedupe-check # Check dedupe marker state
+bash sequencer/notify-proof-dir-complete.sh \
+  --mode discord-only \
+  --discord-authorized \
+  --proof-dir /tmp/proof_example
 ```
 
-## Discord Naming Convention
+Separately authorized exact-file sync:
 
-- Discord-facing text must use **GurthBr0oks**, never Jason or any other name.
-- Agent names in notifications: opencode, claude, codex, manual.
-- NUC names: nuc1, nuc2.
+```bash
+bash sequencer/notify-proof-dir-complete.sh \
+  --mode sync-only \
+  --sync-authorized \
+  --sync-file /home/slimy/slimy-kb/raw/sessions/report-proof-proof_example.json \
+  --sync-file /home/slimy/slimy-kb/raw/sessions/harness-session-index.json \
+  --proof-dir /tmp/proof_example
+```
 
-## History
+`both` uses the same exact allowlist plus `--discord-authorized`,
+`--sync-authorized`, and `--mode both`. Selecting `both` never makes one action
+a fallback for the other.
 
-- 2026-06-07: Created after discovery that 8 recent agent sessions did not
-  invoke notification hooks at session end (no system outage; pipeline was
-  healthy). Root cause was procedural: AGENTS.md had no notification closeout
-  gate.
+## Dedupe and results
+
+Discord dedupe remains `sha256(absolute report path + mtime + size)` with
+`<key>.sent` markers. Sync dedupe is independent: it hashes the fixed
+destination plus the ordered canonical allowlist and content hashes, then uses
+`<key>.sync-sent`. `--force` bypasses only Discord dedupe;
+`--force-sync` bypasses only sync dedupe.
+
+Every invocation reports:
+
+```text
+DISCORD_SENT=
+DISCORD_RESULT=
+NOTIFY_MODE=
+DEDUPE_RESULT=
+SYNC_ATTEMPTED=
+SYNC_RESULT=
+NUC2_ACCESSED=
+REPORT_URL=
+```
+
+Stable states include `NO_ACTION`, `PREFLIGHT_OK`, `DISCORD_SENT`,
+`DISCORD_DEDUPED`, `SYNC_COMPLETE`, `SYNC_DEDUPED`, `DISCORD_FAILED`,
+`SYNC_FAILED`, `DISCORD_OK_SYNC_FAILED`, `SYNC_OK_DISCORD_FAILED`,
+`REFUSED_UNAUTHORIZED_MODE`, and `REFUSED_INVALID_ALLOWLIST`.
+
+Exit codes are 0 for complete/deduped/preflight, 64 for missing/invalid mode or
+usage, 65 for an invalid allowlist, 69 for missing action authorization, 70 for
+a Discord failure, 71 for a sync failure, and 72 for a mixed `both` result.
+
+## Why this boundary exists
+
+In July 2026, an authorized Discord-only closeout unexpectedly triggered an
+undocumented full-directory NUC2 sync. The incident was disclosed as a real
+process-boundary violation. This contract prevents recurrence by making both
+actions explicit, independently authorized, exactly bounded, and testable with
+process stubs.
+
+Never print webhook URLs, dump environment files, store webhook material on
+NUC2, or use raw webhook sends. If webhook material appears in output, stop and
+request rotation without repeating the value.

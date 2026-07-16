@@ -55,7 +55,11 @@
 set -euo pipefail
 
 SCRIPT_NAME="notify-session-complete"
-LOG_DIR="/home/slimy/harness-logs"
+if [[ "${HARNESS_NOTIFIER_TEST_MODE:-0}" == "1" ]]; then
+  LOG_DIR="${HARNESS_NOTIFY_LOG_DIR:-/tmp/harness-notifier-test-logs}"
+else
+  LOG_DIR="/home/slimy/harness-logs"
+fi
 LOG_FILE="${LOG_DIR}/notifications.log"
 STATE_DIR="${HARNESS_NOTIFY_STATE_DIR:-/home/slimy/harness-logs/notify-state}"
 HARNESS_ENV_FILE="${HARNESS_ENV_FILE:-/home/slimy/.slimy-harness.env}"
@@ -806,6 +810,15 @@ else
 fi
 
 send_once() {
+  if [[ "${HARNESS_NOTIFIER_TEST_MODE:-0}" == "1" ]]; then
+    local stub_root curl_command
+    stub_root="$(readlink -f -- "${HARNESS_NOTIFIER_STUB_ROOT:-/nonexistent}" 2>/dev/null || true)"
+    curl_command="$(command -v curl 2>/dev/null || true)"
+    if [[ -z "$stub_root" || "$curl_command" != "$stub_root/"* ]]; then
+      err_log "test mode requires curl from the declared temporary stub root"
+      return 69
+    fi
+  fi
   curl "${CURL_ARGS[@]}" "$WEBHOOK_URL_WITH_WAIT"
 }
 

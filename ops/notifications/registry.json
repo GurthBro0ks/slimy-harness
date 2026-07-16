@@ -24,9 +24,10 @@
       "owns_completion_send": true
     },
     "nuc2": {
-      "owns_relay_host_pointer_only": true,
+      "owns_relay_host_pointer_only": false,
       "stores_webhook_url": false,
-      "uses_relay_path": true
+      "uses_relay_path": false,
+      "artifact_sync_requires_explicit_mode": true
     }
   },
   "env_keys": {
@@ -42,9 +43,7 @@
       "HARNESS_NOTIFY_ATTACH_JSON",
       "HARNESS_NOTIFY_STATE_DIR"
     ],
-    "expected_on_nuc2": [
-      "HARNESS_NOTIFY_RELAY_HOST"
-    ],
+    "expected_on_nuc2": [],
     "must_not_live_on_nuc2": [
       "DISCORD_HARNESS_WEBHOOK_URL"
     ]
@@ -76,30 +75,15 @@
       "script_path": "sequencer/notify-proof-dir-complete.sh",
       "env_key_names": [
         "DISCORD_HARNESS_WEBHOOK_URL",
-        "HARNESS_NOTIFY_RELAY_HOST",
         "HARNESS_REPORT_BASE_URL",
         "HARNESS_NOTIFY_STATE_DIR"
       ],
+      "mode_contract": "discord-only|sync-only|both; no mode is NO_ACTION",
+      "authorization_contract": "Discord and sync are separately authorized",
       "archive_path_pattern": "/home/slimy/slimy-kb/raw/sessions/report-proof-<slug>.json",
       "relay_marker_path": "/home/slimy/harness-logs/notify-state/<relay_key>.relay-sent",
       "relay_failed_marker_path": "/home/slimy/harness-logs/notify-state/<relay_key>.relay-failed",
       "format_expectation": "delegates_to_harness_completion_discord"
-    },
-    {
-      "name": "nuc2_relay_notification_path",
-      "type": "ssh_relay_to_nuc1",
-      "script_path": "sequencer/notify-proof-dir-complete.sh",
-      "env_key_names": [
-        "HARNESS_NOTIFY_RELAY_HOST",
-        "HARNESS_NOTIFY_STATE_DIR"
-      ],
-      "relay_host_source": "nuc2_env_key_only",
-      "nuc2_local_marker_paths": [
-        "/home/slimy/harness-logs/notify-state/<relay_key>.relay-sent",
-        "/home/slimy/harness-logs/notify-state/<relay_key>.relay-failed"
-      ],
-      "remote_delivery_target": "sequencer/notify-session-complete.sh on nuc1",
-      "stores_webhook_secret_on_nuc2": false
     },
     {
       "name": "blocker_notification_path",
@@ -129,7 +113,11 @@
     {
       "name": "session_report_sync_to_nuc2",
       "path": "sequencer/sync-session-reports-to-nuc2.sh",
-      "role": "report_sync_helper"
+      "role": "explicit_exact_file_report_sync_helper",
+      "dedupe_marker_path": "/home/slimy/harness-logs/notify-state/<sync_key>.sync-sent",
+      "directory_discovery": false,
+      "recursive_sync": false,
+      "delete_capability": false
     }
   ]
 }

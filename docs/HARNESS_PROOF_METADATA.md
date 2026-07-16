@@ -46,9 +46,16 @@ print(json.dumps(metadata, indent=2, ensure_ascii=False))
 PYEOF
 
 bash /home/slimy/slimy-harness/sequencer/notify-proof-dir-complete.sh \
+  --dry-run \
+  --mode discord-only \
   --proof-dir "$PROOF" \
   --repo-path "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ```
+
+The snippet is preflight-only. After separate live owner authorization for the
+Discord action, remove `--dry-run` and add `--discord-authorized`. Artifact
+sync is a separate `sync-only` or explicit `both` action with its own
+authorization and exact `--sync-file` allowlist; it is never implied here.
 
 ## Schema
 
@@ -75,3 +82,5 @@ bash /home/slimy/slimy-harness/sequencer/notify-proof-dir-complete.sh \
 4. If a field cannot be inferred, it is set to `"unknown"` (never `"?"`).
 5. The resolved metadata is written to `$PROOF/harness-metadata.resolved.json`.
 6. No secrets or webhook URLs are ever included.
+7. With no explicit `--mode`, the notifier fails closed without external side
+   effects. `discord-only` never syncs; `sync-only` never reads Discord config.
