@@ -179,11 +179,16 @@ fi
 
 REPORT_TS=$(python3 -c "import json; print(json.load(open('$SESSION_REPORT')).get('timestamp','unknown'))" 2>/dev/null || echo "unknown")
 mkdir -p "$KB_SESSIONS_DIR"
-cp "$SESSION_REPORT" "$KB_SESSIONS_DIR/report-${REPORT_TS}.json" 2>/dev/null || true
+ARCHIVED_SESSION_REPORT="$KB_SESSIONS_DIR/report-${REPORT_TS}.json"
+cp "$SESSION_REPORT" "$ARCHIVED_SESSION_REPORT" 2>/dev/null || true
 log "Session report archived to KB."
 
 log "Syncing session reports to NUC2..."
-bash "$SEQUNCER_DIR/sync-session-reports-to-nuc2.sh" 2>&1 || warn "Session report sync to NUC2 failed (non-fatal)"
+bash "$SEQUNCER_DIR/sync-session-reports-to-nuc2.sh" \
+  --sync-authorized \
+  --file "$ARCHIVED_SESSION_REPORT" \
+  --file "$KB_SESSIONS_DIR/harness-session-index.json" 2>&1 \
+  || warn "Session report sync to NUC2 failed (non-fatal)"
 
 log "Running auto-close to update feature_list.json from session report..."
 bash "$SEQUNCER_DIR/auto-close.sh" 2>&1 || err "auto-close.sh failed"

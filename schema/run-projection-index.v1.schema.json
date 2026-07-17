@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.slimyai.xyz/schema/run-projection-index.v1.schema.json",
+  "title": "Slimy Harness bounded run projection index v1",
+  "$comment": "Derived fixture-only RW2-A index. It is not a canonical Run Record, proof, report, or Acceptance Ledger.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "generated_by", "source_machine", "runs", "integrity"],
+  "properties": {
+    "schema_version": { "const": "run-projection-index.v1" },
+    "generated_at": { "$ref": "#/$defs/utcTimestamp" },
+    "generated_by": { "const": "run-projection-exporter@rw2a" },
+    "source_machine": { "const": "nuc1" },
+    "runs": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/indexEntry" }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest"],
+      "properties": {
+        "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  },
+  "$defs": {
+    "runId": {
+      "type": "string",
+      "pattern": "^run_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$"
+    },
+    "utcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z$"
+    },
+    "canonicalString256": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "reportUrl": {
+      "type": "string",
+      "pattern": "^https://harness\\.slimyai\\.xyz/reports/sessions/[A-Za-z0-9._-]+$"
+    },
+    "indexEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id", "subject_type", "subject_id", "project_id", "phase",
+        "run_created_at", "projection_generated_at", "execution", "evidence",
+        "review", "acceptance", "owner_action", "notification",
+        "test_fixture_only", "production_acceptance_enabled", "report_url",
+        "workspace_path"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/runId" },
+        "subject_type": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
+        "subject_id": { "$ref": "#/$defs/canonicalString256" },
+        "project_id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$" },
+        "phase": { "$ref": "#/$defs/canonicalString256" },
+        "run_created_at": { "$ref": "#/$defs/utcTimestamp" },
+        "projection_generated_at": { "$ref": "#/$defs/utcTimestamp" },
+        "execution": { "enum": ["CREATED", "ACTIVE", "INTERRUPTED", "COMPLETED", "FAILED", "CANCELLED", "UNKNOWN"] },
+        "evidence": { "enum": ["PENDING", "CAPTURED", "INCOMPLETE", "UNAVAILABLE", "UNKNOWN"] },
+        "review": { "enum": ["NOT_RUN", "PASS", "WARN", "FAIL", "UNKNOWN"] },
+        "acceptance": { "enum": ["NO_DECISION", "UNKNOWN"] },
+        "owner_action": { "enum": ["NONE_REQUIRED", "OWNER_QA_PENDING", "OWNER_DECISION_PENDING", "DONE", "UNKNOWN"] },
+        "notification": { "enum": ["NOT_SENT", "SENT", "DEDUPED", "RELAYED", "UNKNOWN"] },
+        "test_fixture_only": { "const": true },
+        "production_acceptance_enabled": { "const": false },
+        "report_url": {
+          "oneOf": [
+            { "$ref": "#/$defs/reportUrl" },
+            { "type": "null" }
+          ]
+        },
+        "workspace_path": {
+          "type": "string",
+          "pattern": "^/runs/run_[0-9]{8}T[0-9]{12}Z_[0-9a-f]{32}$"
+        }
+      }
+    }
+  }
+}

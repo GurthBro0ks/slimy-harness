@@ -7,11 +7,13 @@
 # creating a minimal session report from the proof dir, archiving it to
 # the KB, and calling notify-session-complete.sh.
 #
-# Supports harness-metadata.json for rich source metadata.
-# On NUC2 without webhook, relays to NUC1 via SSH.
+# Supports harness-metadata.json for rich source metadata. Discord delivery
+# and NUC2 report synchronization are separate, explicitly authorized modes.
 #
 # Usage:
-#   notify-proof-dir-complete.sh [--dry-run] [--force] [--require-webhook] \
+#   notify-proof-dir-complete.sh --mode MODE [--dry-run] [--force] \
+#     [--discord-authorized] [--sync-authorized] [--sync-file PATH ...] \
+#     [--require-webhook] \
 #     --proof-dir PATH [--repo-path PATH] [--repo-name NAME] \
 #     [--feature-id ID] [--task-title TITLE] [--agent NAME] \
 #     [--source-nuc nuc1|nuc2] [--source-hostname NAME] \
@@ -29,9 +31,11 @@ PROOF_INDEX_DEFAULT="/home/slimy/harness-logs/state/proof-index.json"
 
 DRY_RUN=0
 FORCE=0
-REQUIRE_WEBHOOK=0
-REQUIRE_RELAY=0
-FORWARD_FLAGS=()
+FORCE_SYNC=0
+MODE=""
+DISCORD_AUTHORIZED=0
+SYNC_AUTHORIZED=0
+SYNC_FILES=()
 PROOF_DIR=""
 OPT_REPO_PATH=""
 OPT_REPO_NAME=""
@@ -53,6 +57,10 @@ Usage:
   $SCRIPT_NAME --help
 
 Options:
+  --mode MODE            Required: discord-only, sync-only, or both
+  --discord-authorized   Authorize the Discord action selected by MODE
+  --sync-authorized      Authorize the NUC2 sync action selected by MODE
+  --sync-file PATH       Exact JSON file to sync; repeat for each file
   --proof-dir PATH        Proof directory (required, or positional arg)
   --repo-path PATH        Repository filesystem path
   --repo-name NAME        Repository display name
@@ -64,40 +72,54 @@ Options:
   --commit HASH           Commit hash
   --status STATUS         Task status
   --summary TEXT          Task summary
-  --dry-run               Show what would be sent; do not call Discord
-  --force                 Bypass dedupe check
+  --dry-run               Redacted preflight only; no external command/marker
+  --force                 Bypass Discord dedupe only
+  --force-sync            Bypass sync dedupe only
   --require-webhook       Exit non-zero if webhook URL is missing
-  --require-relay         Exit non-zero if the NUC2 SSH relay chain fails
 
 If harness-metadata.json exists in the proof dir, it is used as the metadata
 source of truth. CLI flags override metadata file values. Missing fields are
 inferred from the environment (hostname, git repo, etc.) and labelled
 "unknown" if unavailable.
 
-On NUC2 without DISCORD_HARNESS_WEBHOOK_URL, relays the session report to
-NUC1 via SSH (requires HARNESS_NOTIFY_RELAY_HOST=nuc1 in env).
+No mode is inferred from webhook, host, relay, or NUC2 availability. With no
+--mode the command refuses before creating reports, markers, or side effects.
+discord-only never invokes ssh, rsync, or the sync helper. sync-only never
+loads Discord configuration or invokes the Discord notifier.
 USG
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --mode)
+      MODE="${2:-}"
+      shift 2
+      ;;
+    --discord-authorized)
+      DISCORD_AUTHORIZED=1
+      shift
+      ;;
+    --sync-authorized)
+      SYNC_AUTHORIZED=1
+      shift
+      ;;
+    --sync-file)
+      SYNC_FILES+=("${2:-}")
+      shift 2
+      ;;
     --dry-run)
       DRY_RUN=1
-      FORWARD_FLAGS+=("--dry-run")
       shift
       ;;
     --force)
       FORCE=1
-      FORWARD_FLAGS+=("--force")
+      shift
+      ;;
+    --force-sync)
+      FORCE_SYNC=1
       shift
       ;;
   --require-webhook)
-    REQUIRE_WEBHOOK=1
-    FORWARD_FLAGS+=("--require-webhook")
-    shift
-    ;;
-  --require-relay)
-    REQUIRE_RELAY=1
     shift
     ;;
     --proof-dir)
@@ -164,6 +186,74 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+emit_no_action() {
+  echo "STATE=NO_ACTION"
+  echo "DISCORD_SENT=no"
+  echo "NOTIFY_MODE=none"
+  echo "DEDUPE_RESULT=not_checked"
+  echo "SYNC_ATTEMPTED=no"
+  echo "SYNC_RESULT=NO_ACTION"
+  echo "NUC2_ACCESSED=no"
+  echo "REPORT_URL=none"
+}
+
+if [[ -z "$MODE" ]]; then
+  emit_no_action
+  echo "ERROR=explicit_--mode_required" >&2
+  usage >&2
+  exit 64
+fi
+
+case "$MODE" in
+  discord-only|sync-only|both) ;;
+  *)
+    emit_no_action
+    echo "STATE=REFUSED_UNAUTHORIZED_MODE"
+    echo "ERROR=invalid_mode:$MODE" >&2
+    exit 64
+    ;;
+esac
+
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  if [[ ( "$MODE" == "discord-only" || "$MODE" == "both" ) && "$DISCORD_AUTHORIZED" -ne 1 ]]; then
+    echo "STATE=REFUSED_UNAUTHORIZED_MODE"
+    echo "DISCORD_SENT=no"
+    echo "NOTIFY_MODE=$MODE"
+    echo "DEDUPE_RESULT=not_checked"
+    echo "SYNC_ATTEMPTED=no"
+    echo "SYNC_RESULT=NO_ACTION"
+    echo "NUC2_ACCESSED=no"
+    echo "REPORT_URL=none"
+    echo "ERROR=discord_authorization_required" >&2
+    exit 69
+  fi
+  if [[ ( "$MODE" == "sync-only" || "$MODE" == "both" ) && "$SYNC_AUTHORIZED" -ne 1 ]]; then
+    echo "STATE=REFUSED_UNAUTHORIZED_MODE"
+    echo "DISCORD_SENT=no"
+    echo "NOTIFY_MODE=$MODE"
+    echo "DEDUPE_RESULT=not_checked"
+    echo "SYNC_ATTEMPTED=no"
+    echo "SYNC_RESULT=NO_ACTION"
+    echo "NUC2_ACCESSED=no"
+    echo "REPORT_URL=none"
+    echo "ERROR=sync_authorization_required" >&2
+    exit 69
+  fi
+fi
+
+if [[ ( "$MODE" == "sync-only" || "$MODE" == "both" ) && ${#SYNC_FILES[@]} -eq 0 ]]; then
+  echo "STATE=REFUSED_INVALID_ALLOWLIST"
+  echo "DISCORD_SENT=no"
+  echo "NOTIFY_MODE=$MODE"
+  echo "DEDUPE_RESULT=not_checked"
+  echo "SYNC_ATTEMPTED=no"
+  echo "SYNC_RESULT=REFUSED_INVALID_ALLOWLIST"
+  echo "NUC2_ACCESSED=no"
+  echo "REPORT_URL=none"
+  echo "ERROR=sync_mode_requires_exact_--sync-file_allowlist" >&2
+  exit 65
+fi
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [$SCRIPT_NAME] $*"; }
 warn() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [$SCRIPT_NAME] WARN: $*" >&2; }
@@ -292,106 +382,6 @@ infer_branch() {
   else
     echo ""
   fi
-}
-
-# ---- relay dedupe helpers (NUC2 local layer) -------------------------------
-#
-# Mirrors the NUC1 send dedupe in notify-session-complete.sh, but is local
-# to the NUC2 relay path: a marker here means "we already SSH-relayed this
-# archived report to NUC1" — not "Discord already received it". The two
-# layers coexist (different suffix) and the dedupe key derivation is the
-# same stable scheme (absolute path + mtime + size) so a repeat call for
-# the same archived report on NUC2 short-circuits before any SSH.
-#
-# Marker file names:
-#   <STATE_DIR>/<key>.relay-sent     — written after a successful SSH chain
-#   <STATE_DIR>/<key>.relay-failed   — diagnostic only, never suppresses
-#                                       future retries
-#
-# Override: HARNESS_NOTIFY_STATE_DIR (default /home/slimy/harness-logs/notify-state)
-
-RELAY_STATE_DIR="${HARNESS_NOTIFY_STATE_DIR:-/home/slimy/harness-logs/notify-state}"
-RELAY_LOG_FILE="/home/slimy/harness-logs/notifications.log"
-RELAY_REDACT_TOKEN="[REDACTED-WEBHOOK]"
-
-relay_redact() {
-  local s="${1-}"
-  s="${s//https:\/\/discord.com\/api\/webhooks\/[A-Za-z0-9_/-]*/$RELAY_REDACT_TOKEN}"
-  s="${s//DISCORD_HARNESS_WEBHOOK_URL/$RELAY_REDACT_TOKEN}"
-  printf '%s' "$s"
-}
-
-relay_ensure_state_dir() {
-  [[ -d "$RELAY_STATE_DIR" ]] || mkdir -p "$RELAY_STATE_DIR" 2>/dev/null || true
-}
-
-relay_compute_dedupe_key() {
-  local path="$1"
-  local abspath mtime size
-  abspath="$(readlink -f -- "$path" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$path")"
-  mtime="$(stat -c '%Y' -- "$path" 2>/dev/null || stat -f '%m' -- "$path" 2>/dev/null || echo 0)"
-  size="$(stat -c '%s' -- "$path" 2>/dev/null || stat -f '%z' -- "$path" 2>/dev/null || echo 0)"
-  printf '%s|%s|%s' "$abspath" "$mtime" "$size" | python3 -c "
-import sys, hashlib
-data = sys.stdin.read().encode('utf-8')
-print(hashlib.sha256(data).hexdigest())
-"
-}
-
-relay_write_marker() {
-  local key="$1"
-  local archived="$2"
-  local basename="$3"
-  local feature_id="$4"
-  local relay_host="$5"
-  local report_url="$6"
-  local marker_status="${7:-success}"
-  local marker_path="$RELAY_STATE_DIR/${key}.relay-sent"
-  relay_ensure_state_dir
-  cat > "$marker_path" <<MEOF
-timestamp:           $NOW_ISO
-archived_report:     $archived
-report_basename:     $basename
-report_url:          $report_url
-feature_id:          $feature_id
-source_nuc:          nuc2
-relay_host:          $relay_host
-relay_status:        $marker_status
-MEOF
-  chmod 0600 "$marker_path" 2>/dev/null || true
-}
-
-relay_write_failed_marker() {
-  local key="$1"
-  local archived="$2"
-  local basename="$3"
-  local feature_id="$4"
-  local relay_host="$5"
-  local ssh_rc="$6"
-  local marker_path="$RELAY_STATE_DIR/${key}.relay-failed"
-  relay_ensure_state_dir
-  cat > "$marker_path" <<MEOF
-timestamp:           $NOW_ISO
-archived_report:     $archived
-report_basename:     $basename
-feature_id:          $feature_id
-source_nuc:          nuc2
-relay_host:          $relay_host
-relay_status:        failed
-ssh_exit_code:       $ssh_rc
-MEOF
-  chmod 0600 "$marker_path" 2>/dev/null || true
-}
-
-relay_log_skip() {
-  local feature_id="$1"
-  local basename="$2"
-  local relay_host="$3"
-  local key_prefix="$4"
-  [[ -d "/home/slimy/harness-logs" ]] || mkdir -p "/home/slimy/harness-logs" 2>/dev/null || true
-  printf '%s relay-skip feature_id=%s report=%s relay_host=%s key=%s reason=%s\n' \
-    "$NOW_ISO" "$feature_id" "$basename" "$relay_host" "$key_prefix" \
-    "already_relayed" >> "$RELAY_LOG_FILE" 2>/dev/null || true
 }
 
 FEATURE_ID=""
@@ -729,18 +719,26 @@ python3 -c "import json; json.load(open('$TMP_REPORT')); print('report valid')" 
   exit 65
 }
 
-if [[ -f "$ARCHIVE_PATH" ]]; then
+ACTION_REPORT_PATH="$ARCHIVE_PATH"
+ARCHIVE_CREATED=0
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  ACTION_REPORT_PATH="$TMP_REPORT"
+  log "DRY-RUN: would archive session report to $ARCHIVE_PATH"
+elif [[ -f "$ARCHIVE_PATH" ]]; then
   log "Archive already exists: $ARCHIVE_PATH (reusing for dedupe)"
 else
   mkdir -p "$KB_SESSIONS_DIR"
   cp "$TMP_REPORT" "$ARCHIVE_PATH"
+  ARCHIVE_CREATED=1
   log "Archived session report to $ARCHIVE_PATH"
 fi
 
 if [[ "$DRY_RUN" -eq 0 ]]; then
   INDEX_OUTPUT="${HARNESS_SESSION_INDEX_OUTPUT:-${KB_SESSIONS_DIR}/harness-session-index.json}"
   EXPORTER="$SEQUENCER_DIR/export-session-index.sh"
-  if [[ -f "$EXPORTER" ]]; then
+  if [[ "$ARCHIVE_CREATED" -eq 0 && -f "$INDEX_OUTPUT" ]]; then
+    log "Session index already covers reused archive: $INDEX_OUTPUT"
+  elif [[ -f "$EXPORTER" ]]; then
     bash "$EXPORTER" --sessions-dir "$KB_SESSIONS_DIR" --output "$INDEX_OUTPUT" 2>&1 \
       || warn "Session index regeneration failed after archive (non-fatal)"
   else
@@ -748,149 +746,181 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
   fi
 fi
 
-refresh_proof_index
+NOTIFIER="$SEQUENCER_DIR/notify-session-complete.sh"
+SYNC_SCRIPT="$SEQUENCER_DIR/sync-session-reports-to-nuc2.sh"
+if [[ "${HARNESS_NOTIFIER_TEST_MODE:-0}" == "1" ]]; then
+  NOTIFIER="${HARNESS_NOTIFY_SESSION_SCRIPT:-$NOTIFIER}"
+  SYNC_SCRIPT="${HARNESS_SYNC_SESSION_SCRIPT:-$SYNC_SCRIPT}"
+fi
+DISCORD_SELECTED=0
+SYNC_SELECTED=0
+[[ "$MODE" == "discord-only" || "$MODE" == "both" ]] && DISCORD_SELECTED=1
+[[ "$MODE" == "sync-only" || "$MODE" == "both" ]] && SYNC_SELECTED=1
 
-HARNESS_ENV_FILE="${HARNESS_ENV_FILE:-/home/slimy/.slimy-harness.env}"
-if [[ -f "$HARNESS_ENV_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "$HARNESS_ENV_FILE"
-  set +a
+discord_dedupe_status() {
+  local report="$1"
+  local state_dir="${HARNESS_NOTIFY_STATE_DIR:-/home/slimy/harness-logs/notify-state}"
+  if [[ ! -f "$report" ]]; then
+    echo "not_checked"
+    return
+  fi
+  local abspath mtime size key
+  abspath="$(readlink -f -- "$report" 2>/dev/null || true)"
+  mtime="$(stat -c '%Y' -- "$report" 2>/dev/null || echo 0)"
+  size="$(stat -c '%s' -- "$report" 2>/dev/null || echo 0)"
+  key="$(printf '%s|%s|%s' "$abspath" "$mtime" "$size" | sha256sum | awk '{print $1}')"
+  if [[ -f "$state_dir/$key.sent" ]]; then
+    echo "present"
+  else
+    echo "absent"
+  fi
+}
+
+DISCORD_DEDUPE_STATUS="not_applicable"
+[[ "$DISCORD_SELECTED" -eq 1 ]] && DISCORD_DEDUPE_STATUS="$(discord_dedupe_status "$ACTION_REPORT_PATH")"
+EXTERNAL_COUNT=0
+[[ "$DISCORD_SELECTED" -eq 1 ]] && EXTERNAL_COUNT=$((EXTERNAL_COUNT + 1))
+[[ "$SYNC_SELECTED" -eq 1 ]] && EXTERNAL_COUNT=$((EXTERNAL_COUNT + 1))
+
+echo "STATE=PREFLIGHT_OK"
+echo "NOTIFY_MODE=$MODE"
+echo "DISCORD_AUTHORIZED=$([[ $DISCORD_AUTHORIZED -eq 1 ]] && echo yes || echo no)"
+echo "SYNC_AUTHORIZED=$([[ $SYNC_AUTHORIZED -eq 1 ]] && echo yes || echo no)"
+echo "REPORT_PATH=$(basename "$ARCHIVE_PATH")"
+echo "REPORT_URL=$PUBLIC_REPORT_URL"
+echo "DISCORD_DEDUPE_STATUS=$DISCORD_DEDUPE_STATUS"
+echo "DISCORD_COMMAND=$([[ $DISCORD_SELECTED -eq 1 ]] && echo 'notify-session-complete.sh [redacted-webhook] [exact-report]' || echo none)"
+echo "SYNC_COMMAND=$([[ $SYNC_SELECTED -eq 1 ]] && echo 'sync-session-reports-to-nuc2.sh [exact-allowlist] [fixed-destination]' || echo none)"
+echo "EXTERNAL_SIDE_EFFECT_COUNT=$EXTERNAL_COUNT"
+
+SYNC_PREFLIGHT=""
+if [[ "$SYNC_SELECTED" -eq 1 ]]; then
+  [[ -f "$SYNC_SCRIPT" ]] || { echo "STATE=SYNC_FAILED"; echo "ERROR=sync_helper_missing" >&2; rm -f "$TMP_REPORT"; exit 71; }
+  SYNC_PREFLIGHT_ARGS=(--dry-run)
+  for sync_file in "${SYNC_FILES[@]}"; do
+    SYNC_PREFLIGHT_ARGS+=(--file "$sync_file")
+  done
+  if ! SYNC_PREFLIGHT="$(bash "$SYNC_SCRIPT" "${SYNC_PREFLIGHT_ARGS[@]}" 2>&1)"; then
+    printf '%s\n' "$SYNC_PREFLIGHT"
+    echo "DISCORD_SENT=no"
+    echo "DEDUPE_RESULT=not_checked"
+    echo "SYNC_ATTEMPTED=no"
+    echo "SYNC_RESULT=REFUSED_INVALID_ALLOWLIST"
+    echo "NUC2_ACCESSED=no"
+    rm -f "$TMP_REPORT"
+    exit 65
+  fi
+  printf '%s\n' "$SYNC_PREFLIGHT"
 fi
 
-WEBHOOK_URL="${DISCORD_HARNESS_WEBHOOK_URL:-}"
-RELAY_HOST="${HARNESS_NOTIFY_RELAY_HOST:-}"
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "STATE=PREFLIGHT_OK"
+  echo "DISCORD_SENT=no"
+  echo "DEDUPE_RESULT=not_checked"
+  echo "SYNC_ATTEMPTED=no"
+  echo "SYNC_RESULT=$([[ $SYNC_SELECTED -eq 1 ]] && echo PREFLIGHT_OK || echo NO_ACTION)"
+  echo "NUC2_ACCESSED=no"
+  echo "REPORT_URL=$PUBLIC_REPORT_URL"
+  rm -f "$TMP_REPORT"
+  exit 0
+fi
 
-if [[ -z "$WEBHOOK_URL" ]]; then
-  INFERRED_NUC_CHECK="$(infer_nuc_from_hostname "$CURRENT_HOSTNAME")"
-  if [[ "$INFERRED_NUC_CHECK" == "nuc2" && -n "$RELAY_HOST" ]]; then
-    # ---- NUC2 local relay dedupe (Phase 3 fix) -----------------------------
-    # The dedupe key is sha256(abs_archived_path|mtime|size). For a repeat
-    # call on the same proof dir the archive is reused (line 464-470) so
-    # mtime and size are stable across calls, giving a stable key. With a
-    # marker present we short-circuit before opening any SSH, which is
-    # what makes the second call robust against transient relay-host
-    # unreachability (e.g. port 4421 connection refused).
-    RELAY_REPORT_URL="${HARNESS_REPORT_BASE_URL:-https://harness.slimyai.xyz}/reports/sessions/${REPORT_BASENAME}"
-    RELAY_DEDUPE_KEY="$(relay_compute_dedupe_key "$ARCHIVE_PATH")"
-    RELAY_MARKER_PATH="$RELAY_STATE_DIR/${RELAY_DEDUPE_KEY}.relay-sent"
-    RELAY_FAILED_MARKER_PATH="$RELAY_STATE_DIR/${RELAY_DEDUPE_KEY}.relay-failed"
+if [[ "${HARNESS_DISABLE_PROOF_INDEX_REFRESH:-0}" != "1" ]]; then
+  refresh_proof_index
+fi
 
-    if [[ "$DRY_RUN" -eq 0 && "$FORCE" -ne 1 && -f "$RELAY_MARKER_PATH" ]]; then
-      relay_log_skip "$R_FEATURE_ID" "$REPORT_BASENAME" "$RELAY_HOST" "${RELAY_DEDUPE_KEY:0:12}"
-      log "already_relayed: relay_dedupe_key=${RELAY_DEDUPE_KEY:0:12}... report=$REPORT_BASENAME relay_host=$RELAY_HOST (skipping locally; no SSH)"
-      rm -f "$TMP_REPORT"
-      exit 0
-    fi
-
-    log "No webhook on NUC2; relaying to $RELAY_HOST (relay_dedupe_key=${RELAY_DEDUPE_KEY:0:12}...)"
-    RELAY_DIR="/tmp/harness-notify-relay"
-    RELAY_PAYLOAD="/tmp/harness-notify-relay/${REPORT_BASENAME}"
-
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      if [[ -f "$RELAY_MARKER_PATH" ]]; then
-        log "DRY-RUN: would skip relay (already_relayed marker present)"
+DISCORD_RC=0
+DISCORD_RESULT="NO_ACTION"
+DISCORD_SENT_VALUE="no"
+DEDUPE_RESULT_VALUE="not_checked"
+if [[ "$DISCORD_SELECTED" -eq 1 ]]; then
+  if [[ ! -f "$NOTIFIER" ]]; then
+    DISCORD_RC=70
+    DISCORD_RESULT="DISCORD_FAILED"
+  else
+    DISCORD_ARGS=(--require-webhook)
+    [[ "$FORCE" -eq 1 ]] && DISCORD_ARGS+=(--force)
+    DISCORD_OUTPUT=""
+    if DISCORD_OUTPUT="$(bash "$NOTIFIER" "${DISCORD_ARGS[@]}" "$ARCHIVE_PATH" 2>&1)"; then
+      DISCORD_RC=0
+      if grep -q 'already_notified' <<<"$DISCORD_OUTPUT" || [[ "$DISCORD_DEDUPE_STATUS" == "present" ]]; then
+        DISCORD_RESULT="DISCORD_DEDUPED"
+        DEDUPE_RESULT_VALUE="skipped"
       else
-        log "DRY-RUN: would relay $ARCHIVE_PATH to $RELAY_HOST:$RELAY_PAYLOAD"
-        log "DRY-RUN: would ssh-exec notify-session-complete.sh on $RELAY_HOST"
-        log "DRY-RUN: would write relay marker $RELAY_MARKER_PATH"
+        DISCORD_RESULT="DISCORD_SENT"
+        DISCORD_SENT_VALUE="yes"
+        DEDUPE_RESULT_VALUE="sent"
       fi
     else
-      # ---- SSH chain with redacted diagnostics (Phase 4) -----------------
-      # We capture each step's exit code ourselves instead of letting
-      # `set -e` kill the script, so the WARN line and the relay-failed
-      # marker can be written before the script exits.
-      _MKDIR_RC=0
-      _MKDIR_ERR_FILE="/tmp/relay_mkdir.$$.err"
-      ssh -o BatchMode=yes -o ConnectTimeout=10 "$RELAY_HOST" "mkdir -p '$RELAY_DIR'" 2>"$_MKDIR_ERR_FILE" || _MKDIR_RC=$?
-      if [[ "$_MKDIR_RC" -ne 0 ]]; then
-        _MKDIR_ERR_RAW="$(cat "$_MKDIR_ERR_FILE" 2>/dev/null | head -3 | tr '\n' ' ')"
-        _MKDIR_ERR="$(relay_redact "$_MKDIR_ERR_RAW")"
-        warn "Relay SSH mkdir failed: relay_host=$RELAY_HOST source_nuc=nuc2 report=$REPORT_BASENAME feature_id=$R_FEATURE_ID ssh_exit_code=$_MKDIR_RC error=$_MKDIR_ERR"
-        relay_write_failed_marker "$RELAY_DEDUPE_KEY" "$ARCHIVE_PATH" "$REPORT_BASENAME" "$R_FEATURE_ID" "$RELAY_HOST" "$_MKDIR_RC" || true
-        rm -f "$_MKDIR_ERR_FILE"
-        rm -f "$TMP_REPORT"
-        if [[ "$REQUIRE_RELAY" -eq 1 || "$REQUIRE_WEBHOOK" -eq 1 ]]; then
-          exit 70
-        fi
-        exit 0
-      fi
-      rm -f "$_MKDIR_ERR_FILE"
-
-      _SCP_RC=0
-      _SCP_ERR_FILE="/tmp/relay_scp.$$.err"
-      scp -o BatchMode=yes -o ConnectTimeout=10 "$ARCHIVE_PATH" "$RELAY_HOST:$RELAY_PAYLOAD" 2>"$_SCP_ERR_FILE" || _SCP_RC=$?
-      if [[ "$_SCP_RC" -ne 0 ]]; then
-        _SCP_ERR_RAW="$(cat "$_SCP_ERR_FILE" 2>/dev/null | head -3 | tr '\n' ' ')"
-        _SCP_ERR="$(relay_redact "$_SCP_ERR_RAW")"
-        warn "Relay scp failed: relay_host=$RELAY_HOST source_nuc=nuc2 report=$REPORT_BASENAME feature_id=$R_FEATURE_ID ssh_exit_code=$_SCP_RC error=$_SCP_ERR"
-        relay_write_failed_marker "$RELAY_DEDUPE_KEY" "$ARCHIVE_PATH" "$REPORT_BASENAME" "$R_FEATURE_ID" "$RELAY_HOST" "$_SCP_RC" || true
-        rm -f "$_SCP_ERR_FILE"
-        rm -f "$TMP_REPORT"
-        if [[ "$REQUIRE_RELAY" -eq 1 || "$REQUIRE_WEBHOOK" -eq 1 ]]; then
-          exit 70
-        fi
-        exit 0
-      fi
-      rm -f "$_SCP_ERR_FILE"
-
-      RELAY_ARCHIVE="/home/slimy/slimy-kb/raw/sessions/${REPORT_BASENAME}"
-      _RUN_RC=0
-      _RUN_OUT_FILE="/tmp/relay_run.$$.out"
-      _RUN_ERR_FILE="/tmp/relay_run.$$.err"
-      ssh -o BatchMode=yes -o ConnectTimeout=10 "$RELAY_HOST" "mkdir -p /home/slimy/slimy-kb/raw/sessions && cp '$RELAY_PAYLOAD' '$RELAY_ARCHIVE' 2>/dev/null; bash /home/slimy/slimy-harness/sequencer/notify-session-complete.sh '$RELAY_ARCHIVE'" \
-        >"$_RUN_OUT_FILE" 2>"$_RUN_ERR_FILE" || _RUN_RC=$?
-      _RUN_TAIL="$(relay_redact "$(tail -5 "$_RUN_OUT_FILE" 2>/dev/null | tr '\n' ' ')")"
-      _RUN_ERR_RAW="$(head -3 "$_RUN_ERR_FILE" 2>/dev/null | tr '\n' ' ')"
-      _RUN_ERR="$(relay_redact "$_RUN_ERR_RAW")"
-      if [[ "$_RUN_RC" -ne 0 ]]; then
-        warn "Relay notify on $RELAY_HOST failed: relay_host=$RELAY_HOST source_nuc=nuc2 report=$REPORT_BASENAME feature_id=$R_FEATURE_ID ssh_exit_code=$_RUN_RC tail=\"$_RUN_TAIL\" error=$_RUN_ERR"
-        relay_write_failed_marker "$RELAY_DEDUPE_KEY" "$ARCHIVE_PATH" "$REPORT_BASENAME" "$R_FEATURE_ID" "$RELAY_HOST" "$_RUN_RC" || true
-        rm -f "$_RUN_OUT_FILE" "$_RUN_ERR_FILE"
-        rm -f "$TMP_REPORT"
-        if [[ "$REQUIRE_RELAY" -eq 1 || "$REQUIRE_WEBHOOK" -eq 1 ]]; then
-          exit 70
-        fi
-        exit 0
-      fi
-      relay_write_marker "$RELAY_DEDUPE_KEY" "$ARCHIVE_PATH" "$REPORT_BASENAME" "$R_FEATURE_ID" "$RELAY_HOST" "$RELAY_REPORT_URL" "success" || true
-      log "Relay to $RELAY_HOST complete: source_nuc=nuc2 report=$REPORT_BASENAME tail=\"$_RUN_TAIL\""
-      rm -f "$_RUN_OUT_FILE" "$_RUN_ERR_FILE"
+      DISCORD_RC=$?
+      DISCORD_RESULT="DISCORD_FAILED"
+      DEDUPE_RESULT_VALUE="not_checked"
     fi
-    rm -f "$TMP_REPORT"
-    exit 0
-  elif [[ -z "$RELAY_HOST" ]]; then
-    if [[ "$REQUIRE_WEBHOOK" -eq 1 ]]; then
-      echo "[$SCRIPT_NAME] ERROR: no webhook URL and no HARNESS_NOTIFY_RELAY_HOST set" >&2
-      echo "[$SCRIPT_NAME] To enable NUC2 notifications, add to /home/slimy/.slimy-harness.env:" >&2
-      echo "[$SCRIPT_NAME]   HARNESS_NOTIFY_RELAY_HOST=nuc1" >&2
-      rm -f "$TMP_REPORT"
-      exit 67
-    fi
-    warn "No webhook URL and no relay host; skipping notification"
-    rm -f "$TMP_REPORT"
-    exit 0
+    printf '%s\n' "$DISCORD_OUTPUT"
   fi
 fi
 
-if [[ "$DRY_RUN" -eq 0 ]]; then
-  SYNC_SCRIPT="$SEQUENCER_DIR/sync-session-reports-to-nuc2.sh"
-  if [[ -f "$SYNC_SCRIPT" ]]; then
-    bash "$SYNC_SCRIPT" 2>&1 || warn "Session report sync to NUC2 failed (non-fatal)"
+SYNC_RC=0
+SYNC_RESULT_VALUE="NO_ACTION"
+SYNC_ATTEMPTED_VALUE="no"
+NUC2_ACCESSED_VALUE="no"
+if [[ "$SYNC_SELECTED" -eq 1 ]]; then
+  SYNC_ARGS=(--sync-authorized)
+  [[ "$FORCE_SYNC" -eq 1 ]] && SYNC_ARGS+=(--force-sync)
+  for sync_file in "${SYNC_FILES[@]}"; do
+    SYNC_ARGS+=(--file "$sync_file")
+  done
+  SYNC_OUTPUT=""
+  if SYNC_OUTPUT="$(bash "$SYNC_SCRIPT" "${SYNC_ARGS[@]}" 2>&1)"; then
+    SYNC_RC=0
+  else
+    SYNC_RC=$?
+  fi
+  printf '%s\n' "$SYNC_OUTPUT"
+  SYNC_RESULT_VALUE="$(awk -F= '/^SYNC_RESULT=/{v=$2} END{print v}' <<<"$SYNC_OUTPUT")"
+  SYNC_ATTEMPTED_VALUE="$(awk -F= '/^SYNC_ATTEMPTED=/{v=$2} END{print v}' <<<"$SYNC_OUTPUT")"
+  NUC2_ACCESSED_VALUE="$(awk -F= '/^NUC2_ACCESSED=/{v=$2} END{print v}' <<<"$SYNC_OUTPUT")"
+  [[ -n "$SYNC_RESULT_VALUE" ]] || SYNC_RESULT_VALUE="SYNC_FAILED"
+  [[ -n "$SYNC_ATTEMPTED_VALUE" ]] || SYNC_ATTEMPTED_VALUE="no"
+  [[ -n "$NUC2_ACCESSED_VALUE" ]] || NUC2_ACCESSED_VALUE="no"
+fi
+
+FINAL_STATE="NO_ACTION"
+FINAL_RC=0
+if [[ "$MODE" == "discord-only" ]]; then
+  FINAL_STATE="$DISCORD_RESULT"
+  [[ "$DISCORD_RC" -eq 0 ]] || FINAL_RC=70
+elif [[ "$MODE" == "sync-only" ]]; then
+  FINAL_STATE="$SYNC_RESULT_VALUE"
+  [[ "$SYNC_RC" -eq 0 ]] || FINAL_RC=71
+else
+  if [[ "$DISCORD_RC" -eq 0 && "$SYNC_RC" -eq 0 ]]; then
+    if [[ "$DISCORD_RESULT" == "DISCORD_DEDUPED" && "$SYNC_RESULT_VALUE" == "SYNC_DEDUPED" ]]; then
+      FINAL_STATE="SYNC_DEDUPED"
+    else
+      FINAL_STATE="SYNC_COMPLETE"
+    fi
+  elif [[ "$DISCORD_RC" -eq 0 && "$SYNC_RC" -ne 0 ]]; then
+    FINAL_STATE="DISCORD_OK_SYNC_FAILED"
+    FINAL_RC=72
+  elif [[ "$DISCORD_RC" -ne 0 && "$SYNC_RC" -eq 0 ]]; then
+    FINAL_STATE="SYNC_OK_DISCORD_FAILED"
+    FINAL_RC=72
+  else
+    FINAL_STATE="DISCORD_FAILED"
+    FINAL_RC=72
   fi
 fi
 
-NOTIFIER="$SEQUENCER_DIR/notify-session-complete.sh"
-if [[ ! -f "$NOTIFIER" ]]; then
-  echo "[$SCRIPT_NAME] ERROR: notifier not found at $NOTIFIER" >&2
-  rm -f "$TMP_REPORT"
-  exit 67
-fi
-
-log "Calling notify-session-complete.sh with ${FORWARD_FLAGS[*]} $ARCHIVE_PATH"
-bash "$NOTIFIER" "${FORWARD_FLAGS[@]}" "$ARCHIVE_PATH"
-NOTIFY_RC=$?
+echo "STATE=$FINAL_STATE"
+echo "DISCORD_SENT=$DISCORD_SENT_VALUE"
+echo "DISCORD_RESULT=$DISCORD_RESULT"
+echo "NOTIFY_MODE=$MODE"
+echo "DEDUPE_RESULT=$DEDUPE_RESULT_VALUE"
+echo "SYNC_ATTEMPTED=$SYNC_ATTEMPTED_VALUE"
+echo "SYNC_RESULT=$SYNC_RESULT_VALUE"
+echo "NUC2_ACCESSED=$NUC2_ACCESSED_VALUE"
+echo "REPORT_URL=$PUBLIC_REPORT_URL"
 
 rm -f "$TMP_REPORT"
-
-exit $NOTIFY_RC
+exit "$FINAL_RC"
