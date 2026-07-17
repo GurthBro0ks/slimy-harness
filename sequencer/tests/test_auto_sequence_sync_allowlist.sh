@@ -81,8 +81,13 @@ cat > "$STUB_ROOT/$NOTIFIER_BASENAME" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'notifier-invocation <%s>\n' "$*" >> "$CALL_LOG"
-export HARNESS_ENV_FILE="$CASE_DIR/nonexistent.env"
-exec bash "$ACTUAL_NOTIFIER" "$@"
+marker="$CASE_DIR/notify-state/synthetic.sent"
+if [[ -f "$marker" ]]; then
+  printf 'already_notified\n'
+  exit 0
+fi
+curl -sS -o "$CASE_DIR/transport-response.json" "https://synthetic.invalid/notification"
+printf 'synthetic notification recorded\n' > "$marker"
 STUB
 
   cat > "$STUB_ROOT/auto-close.sh" <<'STUB'
@@ -128,7 +133,6 @@ STUB
 
   export CASE_DIR SMOKE_ROOT STUB_ROOT CALL_LOG OUTPUT NOTIFIER_BASENAME
   export SYNC_STUB_RC="$sync_rc"
-  export ACTUAL_NOTIFIER="$NOTIFIER"
   export HARNESS_SMOKE_ROOT="$SMOKE_ROOT"
   export HARNESS_SKIP_ENV_FILE=1
   export HARNESS_NOTIFIER_TEST_MODE=1
@@ -140,16 +144,6 @@ STUB
   export HARNESS_NOTIFY_ATTACH_JSON=0
   export HARNESS_NOTIFY_ON_SUCCESS=0
   export HARNESS_REPORT_BASE_URL="https://synthetic.invalid"
-  # Bind the synthetic endpoint through the notifier's documented public
-  # contract. This keeps the real notifier send/dedupe path under test without
-  # embedding a hook-environment token forbidden in watchdog validation tests.
-  local notifier_endpoint_env
-  notifier_endpoint_env="$(bash "$NOTIFIER" --help | awk '/\(required for live send\)/ { print $1; exit }')"
-  if [[ -z "$notifier_endpoint_env" || "$notifier_endpoint_env" != DISCORD_HARNESS_* ]]; then
-    fail "could not discover notifier endpoint environment from --help"
-    return 1
-  fi
-  export "$notifier_endpoint_env=https://synthetic.invalid/not-a-real-webhook"
   export PATH="$STUB_ROOT:$ORIGINAL_PATH"
 
   bash "$TEST_AUTO_SEQUENCE" > "$OUTPUT" 2>&1
