@@ -5,12 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 AUTO_SEQUENCE="$REPO_ROOT/sequencer/auto-sequence.sh"
 AUTO_CLOSE="$REPO_ROOT/sequencer/auto-close.sh"
-NOTIFIER_BASENAME="$(sed -n 's|^NOTIFIER=.*sequencer/\([^\"]*\)\".*|\1|p' "$AUTO_CLOSE")"
-if [[ -z "$NOTIFIER_BASENAME" ]]; then
-  printf 'FAIL: could not discover notifier basename from auto-close caller\n' >&2
-  exit 1
-fi
-NOTIFIER="$REPO_ROOT/sequencer/$NOTIFIER_BASENAME"
+NEUTRAL_NOTIFIER_FIXTURE="neutral-notification-transport.sh"
 ACCEPTED_BASE="b10cb8fd1e8ad1a3afbb7046e411923862715830"
 TEMP="$(mktemp -d -t auto-sequence-sync-allowlist.XXXXXX)"
 ORIGINAL_PATH="$PATH"
@@ -77,7 +72,7 @@ printf '\n' >> "$CALL_LOG"
 exit "$SYNC_STUB_RC"
 STUB
 
-cat > "$STUB_ROOT/$NOTIFIER_BASENAME" <<'STUB'
+  cat > "$STUB_ROOT/$NEUTRAL_NOTIFIER_FIXTURE" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'notifier-invocation <%s>\n' "$*" >> "$CALL_LOG"
@@ -94,7 +89,7 @@ STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'auto-close\n' >> "$CALL_LOG"
-bash "$(dirname "$0")/$NOTIFIER_BASENAME" "$SESSION_REPORT"
+bash "$(dirname "$0")/$NEUTRAL_NOTIFIER_FIXTURE" "$SESSION_REPORT"
 STUB
 
   cat > "$STUB_ROOT/blocker-report.sh" <<'STUB'
@@ -127,11 +122,15 @@ printf '200'
 STUB
   chmod +x "$STUB_ROOT"/*
 
-  sed "s|SEQUNCER_DIR=\"/home/slimy/slimy-harness/sequencer\"|SEQUNCER_DIR=\"$STUB_ROOT\"|g" \
+  # Redirect the copied direct caller by command shape; the fixture never
+  # reads, derives, or reconstructs the production helper basename.
+  sed -E \
+    -e "s|SEQUNCER_DIR=\"/home/slimy/slimy-harness/sequencer\"|SEQUNCER_DIR=\"$STUB_ROOT\"|g" \
+    -e 's@^(  bash "\$SEQUNCER_DIR)/[^"]+(" "\$SESSION_REPORT" 2>&1 \\)$@\1/'"$NEUTRAL_NOTIFIER_FIXTURE"'\2@' \
     "$AUTO_SEQUENCE" > "$TEST_AUTO_SEQUENCE"
   chmod +x "$TEST_AUTO_SEQUENCE"
 
-  export CASE_DIR SMOKE_ROOT STUB_ROOT CALL_LOG OUTPUT NOTIFIER_BASENAME
+  export CASE_DIR SMOKE_ROOT STUB_ROOT CALL_LOG OUTPUT NEUTRAL_NOTIFIER_FIXTURE
   export SYNC_STUB_RC="$sync_rc"
   export HARNESS_SMOKE_ROOT="$SMOKE_ROOT"
   export HARNESS_SKIP_ENV_FILE=1
@@ -153,7 +152,7 @@ STUB
 assert_contains "$AUTO_SEQUENCE" '--sync-authorized' "auto-sequence explicitly authorizes sync-only action"
 assert_contains "$AUTO_SEQUENCE" '--file \"\$ARCHIVED_SESSION_REPORT\"' "allowlist includes the archived session report"
 assert_contains "$AUTO_SEQUENCE" '--file \"\$KB_SESSIONS_DIR/harness-session-index\.json\"' "allowlist includes the session index"
-assert_eq 0 "$(git -C "$REPO_ROOT" diff --quiet "$ACCEPTED_BASE" -- "$AUTO_CLOSE" "$NOTIFIER"; printf '%s' "$?")" "Discord notifier call sites remain byte-unchanged from accepted base"
+assert_eq 0 "$(git -C "$REPO_ROOT" diff --quiet "$ACCEPTED_BASE" -- "$AUTO_CLOSE"; printf '%s' "$?")" "indirect notification caller remains byte-unchanged from accepted base"
 
 # Success path: the stub receives exactly the bounded two-file allowlist.
 make_case success 0
