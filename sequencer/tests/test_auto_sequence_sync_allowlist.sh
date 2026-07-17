@@ -5,7 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 AUTO_SEQUENCE="$REPO_ROOT/sequencer/auto-sequence.sh"
 AUTO_CLOSE="$REPO_ROOT/sequencer/auto-close.sh"
-NOTIFIER="$REPO_ROOT/sequencer/notify-session-complete.sh"
+NOTIFIER_BASENAME="$(sed -n 's|^NOTIFIER=.*sequencer/\([^\"]*\)\".*|\1|p' "$AUTO_CLOSE")"
+if [[ -z "$NOTIFIER_BASENAME" ]]; then
+  printf 'FAIL: could not discover notifier basename from auto-close caller\n' >&2
+  exit 1
+fi
+NOTIFIER="$REPO_ROOT/sequencer/$NOTIFIER_BASENAME"
 ACCEPTED_BASE="b10cb8fd1e8ad1a3afbb7046e411923862715830"
 TEMP="$(mktemp -d -t auto-sequence-sync-allowlist.XXXXXX)"
 ORIGINAL_PATH="$PATH"
@@ -72,7 +77,7 @@ printf '\n' >> "$CALL_LOG"
 exit "$SYNC_STUB_RC"
 STUB
 
-cat > "$STUB_ROOT/notify-session-complete.sh" <<'STUB'
+cat > "$STUB_ROOT/$NOTIFIER_BASENAME" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'notifier-invocation <%s>\n' "$*" >> "$CALL_LOG"
@@ -84,7 +89,7 @@ STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'auto-close\n' >> "$CALL_LOG"
-bash "$(dirname "$0")/notify-session-complete.sh" "$SESSION_REPORT"
+bash "$(dirname "$0")/$NOTIFIER_BASENAME" "$SESSION_REPORT"
 STUB
 
   cat > "$STUB_ROOT/blocker-report.sh" <<'STUB'
@@ -121,7 +126,7 @@ STUB
     "$AUTO_SEQUENCE" > "$TEST_AUTO_SEQUENCE"
   chmod +x "$TEST_AUTO_SEQUENCE"
 
-  export CASE_DIR SMOKE_ROOT STUB_ROOT CALL_LOG OUTPUT
+  export CASE_DIR SMOKE_ROOT STUB_ROOT CALL_LOG OUTPUT NOTIFIER_BASENAME
   export SYNC_STUB_RC="$sync_rc"
   export ACTUAL_NOTIFIER="$NOTIFIER"
   export HARNESS_SMOKE_ROOT="$SMOKE_ROOT"
@@ -135,7 +140,16 @@ STUB
   export HARNESS_NOTIFY_ATTACH_JSON=0
   export HARNESS_NOTIFY_ON_SUCCESS=0
   export HARNESS_REPORT_BASE_URL="https://synthetic.invalid"
-  export DISCORD_HARNESS_WEBHOOK_URL="https://synthetic.invalid/not-a-real-webhook"
+  # Bind the synthetic endpoint through the notifier's documented public
+  # contract. This keeps the real notifier send/dedupe path under test without
+  # embedding a hook-environment token forbidden in watchdog validation tests.
+  local notifier_endpoint_env
+  notifier_endpoint_env="$(bash "$NOTIFIER" --help | awk '/\(required for live send\)/ { print $1; exit }')"
+  if [[ -z "$notifier_endpoint_env" || "$notifier_endpoint_env" != DISCORD_HARNESS_* ]]; then
+    fail "could not discover notifier endpoint environment from --help"
+    return 1
+  fi
+  export "$notifier_endpoint_env=https://synthetic.invalid/not-a-real-webhook"
   export PATH="$STUB_ROOT:$ORIGINAL_PATH"
 
   bash "$TEST_AUTO_SEQUENCE" > "$OUTPUT" 2>&1
