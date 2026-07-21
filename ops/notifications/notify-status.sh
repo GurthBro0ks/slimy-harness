@@ -125,7 +125,7 @@ done <<< "$all_optional_nuc1"
 log "  NUC2 expected:"
 while IFS= read -r key; do
   [[ -z "$key" ]] && continue
-  if ssh nuc2 "grep -qE '^${key}=' /home/slimy/.slimy-harness.env" 2>/dev/null; then
+  if ssh -o BatchMode=yes -o ConnectTimeout=5 nuc2 "grep -qE '^${key}=' /home/slimy/.slimy-harness.env" 2>/dev/null; then
     log "    $key: present (remote, redacted)"
   else
     record_warn "NUC2 $key: missing or unreachable"
@@ -135,7 +135,7 @@ done <<< "$all_expected_nuc2"
 log "  NUC2 must NOT store:"
 while IFS= read -r key; do
   [[ -z "$key" ]] && continue
-  if ssh nuc2 "grep -qE '^${key}=' /home/slimy/.slimy-harness.env" 2>/dev/null; then
+  if ssh -o BatchMode=yes -o ConnectTimeout=5 nuc2 "grep -qE '^${key}=' /home/slimy/.slimy-harness.env" 2>/dev/null; then
     record_fail "NUC2 must not store $key"
   else
     log "    $key: absent (correct)"

@@ -182,8 +182,8 @@ build_schedule_inventory() {
 
   local user_cron=0 sys_timer=0 read_only=0
   user_cron="$(printf '%s' "$inv_output" | grep -c 'schedule_type: user_crontab' || true)"
-  sys_timer="$(printf '%s' "$inv_output" | grep -cE 'schedule_type: (system_timer|user_timer)' || true)"
-  read_only="$(printf '%s' "$inv_output" | grep -c 'managed_mode: read_only' || true)"
+  sys_timer="$(printf '%s' "$inv_output" | grep -cE 'schedule_type: (system_systemd_timer|user_systemd_timer)' || true)"
+  read_only="$(printf '%s' "$inv_output" | grep -c '^---$' || true)"
 
   local highlights
   highlights="$(build_schedule_highlights "$inv_output")" || highlights="[]"
@@ -528,4 +528,6 @@ main() {
   log "DONE"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

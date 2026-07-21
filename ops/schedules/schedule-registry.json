@@ -36,6 +36,29 @@
       "notes": "Dry-run only in Ops-4B. Manual watchdog is not installed as cron/timer; live scheduling requires separate explicit operator approval."
     },
     {
+      "schedule_id": "ops-snapshot-producer-timer",
+      "description": "NUC1 read-only Habitat ops snapshot producer user timer",
+      "target_machine": "nuc1",
+      "owner_scope": "user",
+      "schedule_type": "user_systemd_timer",
+      "source_path_or_unit": "ops-snapshot-producer.timer",
+      "managed_mode": "managed_candidate",
+      "risk_level": "low",
+      "approval_level": "owner",
+      "command_redaction_rules": [
+        "redact bearer tokens",
+        "redact webhook-like URLs",
+        "redact secret-looking env assignments"
+      ],
+      "backup_strategy_ref": "ops4b-user-timer-unit-state-snapshot",
+      "rollback_strategy_ref": "ops4b-user-timer-reapply-previous-enabled-state",
+      "current_inventory_ref": "repository-staged:ops/systemd/user/ops-snapshot-producer.timer; not installed or active",
+      "live_enable_allowed": false,
+      "live_disable_allowed": false,
+      "live_run_once_allowed": false,
+      "notes": "Repository-staged definition only. The producer is read-only except for its existing snapshot output path. Live enable, disable, and run-once remain unapproved and require a separate activation phase."
+    },
+    {
       "schedule_id": "nuc1-daily-report-timer",
       "description": "NUC1 user timer for daily harness report",
       "target_machine": "nuc1",

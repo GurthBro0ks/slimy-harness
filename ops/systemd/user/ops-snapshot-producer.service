@@ -1,0 +1,15 @@
+[Unit]
+Description=Generate the read-only Harness ops snapshot
+ConditionFileIsExecutable=/home/slimy/slimy-harness/ops/snapshot-producer.sh
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/slimy/slimy-harness
+ExecStart=/home/slimy/slimy-harness/ops/snapshot-producer.sh
+UMask=0027
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

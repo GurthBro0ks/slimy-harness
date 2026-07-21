@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh the Harness ops snapshot every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=30s
+RandomizedDelaySec=15s
+Unit=ops-snapshot-producer.service
+
+[Install]
+WantedBy=timers.target
