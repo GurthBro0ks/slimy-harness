@@ -10,6 +10,5 @@ UMask=0027
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectKernelTunables=true
-ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true

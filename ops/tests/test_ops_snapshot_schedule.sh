@@ -39,6 +39,21 @@ if grep -Eq '^(Environment|EnvironmentFile|User|Restart)=' "$SERVICE"; then
 fi
 pass "service is an absolute-path oneshot with no embedded environment or restart policy"
 
+if grep -Fx 'ProtectKernelModules=true' "$SERVICE" >/dev/null; then
+  fail "user service must not implicitly request a CAP_SYS_MODULE bounding-set drop"
+fi
+for directive in \
+  'UMask=0027' \
+  'NoNewPrivileges=true' \
+  'ProtectSystem=full' \
+  'ProtectKernelTunables=true' \
+  'ProtectControlGroups=true' \
+  'RestrictSUIDSGID=true'; do
+  grep -Fx "$directive" "$SERVICE" >/dev/null || \
+    fail "compatible service hardening changed: $directive"
+done
+pass "user-manager-compatible hardening avoids capability drops and preserves compatible restrictions"
+
 grep -Fx 'OnUnitActiveSec=10min' "$TIMER" >/dev/null || fail "timer cadence is not 10 minutes"
 grep -Fx 'Unit=ops-snapshot-producer.service' "$TIMER" >/dev/null || fail "timer/service pair does not match"
 pass "timer uses the explicit matching service on a 10-minute cadence"
