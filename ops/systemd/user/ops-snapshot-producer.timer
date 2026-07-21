@@ -2,7 +2,7 @@
 Description=Refresh the Harness ops snapshot every 10 minutes
 
 [Timer]
-OnBootSec=2min
+OnActiveSec=10min
 OnUnitActiveSec=10min
 AccuracySec=30s
 RandomizedDelaySec=15s

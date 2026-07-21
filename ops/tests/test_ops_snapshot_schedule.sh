@@ -4,13 +4,43 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REGISTRY="$ROOT_DIR/ops/schedules/schedule-registry.json"
 SERVICE="$ROOT_DIR/ops/systemd/user/ops-snapshot-producer.service"
-TIMER="$ROOT_DIR/ops/systemd/user/ops-snapshot-producer.timer"
+TIMER="${OPS_SNAPSHOT_TIMER_PATH:-$ROOT_DIR/ops/systemd/user/ops-snapshot-producer.timer}"
 CLI="$ROOT_DIR/ops/harness-ops"
 TEMP="$(mktemp -d)"
 trap 'rm -rf "$TEMP"' EXIT
 
 pass() { echo "PASS: $*"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
+
+timer_value() {
+  local directive="$1"
+  local -a values=()
+
+  mapfile -t values < <(
+    sed -n -E \
+      "s/^[[:space:]]*${directive}[[:space:]]*=[[:space:]]*([^#;[:space:]]+)[[:space:]]*([#;].*)?$/\\1/p" \
+      "$TIMER"
+  )
+  [[ "${#values[@]}" == "1" ]] || fail "expected exactly one $directive directive"
+  printf '%s\n' "${values[0]}"
+}
+
+duration_to_seconds() {
+  local duration="$1"
+  local amount unit multiplier
+
+  [[ "$duration" =~ ^([0-9]+)([[:alpha:]]*)$ ]] || return 1
+  amount="${BASH_REMATCH[1]}"
+  unit="${BASH_REMATCH[2]}"
+  case "$unit" in
+    ''|s|sec|secs|second|seconds) multiplier=1 ;;
+    min|mins|minute|minutes) multiplier=60 ;;
+    h|hr|hrs|hour|hours) multiplier=3600 ;;
+    d|day|days) multiplier=86400 ;;
+    *) return 1 ;;
+  esac
+  printf '%s\n' "$((10#$amount * multiplier))"
+}
 
 entry_count="$(jq '[.entries[] | select(.schedule_id == "ops-snapshot-producer-timer")] | length' "$REGISTRY")"
 [[ "$entry_count" == "1" ]] || fail "expected exactly one ops snapshot timer registry entry"
@@ -54,9 +84,26 @@ for directive in \
 done
 pass "user-manager-compatible hardening avoids capability drops and preserves compatible restrictions"
 
-grep -Fx 'OnUnitActiveSec=10min' "$TIMER" >/dev/null || fail "timer cadence is not 10 minutes"
+if grep -Eq '^[[:space:]]*(OnBootSec|OnStartupSec|OnCalendar)[[:space:]]*=' "$TIMER"; then
+  fail "timer contains a boot/startup-relative or calendar catch-up trigger"
+fi
+if grep -Eq '^[[:space:]]*Persistent[[:space:]]*=[[:space:]]*(1|yes|true|on)[[:space:]]*$' "$TIMER"; then
+  fail "timer must not request persistent catch-up activation"
+fi
+
+first_delay="$(timer_value OnActiveSec)"
+first_delay_seconds="$(duration_to_seconds "$first_delay")" || fail "timer first delay has an unsupported duration: $first_delay"
+(( first_delay_seconds > 0 )) || fail "timer first delay must be positive"
+
+recurring_interval="$(timer_value OnUnitActiveSec)"
+recurring_interval_seconds="$(duration_to_seconds "$recurring_interval")" || \
+  fail "timer recurring interval has an unsupported duration: $recurring_interval"
+(( recurring_interval_seconds > 0 )) || fail "timer recurring interval must be positive"
+(( recurring_interval_seconds < 900 )) || fail "timer recurring interval must remain below the 900-second freshness window"
+
 grep -Fx 'Unit=ops-snapshot-producer.service' "$TIMER" >/dev/null || fail "timer/service pair does not match"
-pass "timer uses the explicit matching service on a 10-minute cadence"
+pass "timer defers first firing from activation and recurs within the freshness window"
+pass "enabling and starting the timer cannot imply an immediate producer start"
 
 "$CLI" schedule plan ops-snapshot-producer-timer > "$TEMP/plan.out"
 "$CLI" schedule dry-run ops-snapshot-producer-timer --action enable > "$TEMP/enable.out"
