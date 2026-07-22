@@ -22,6 +22,12 @@ assert_source_token "$PRODUCER" "grep -c '^---$'" "read-only schedule entry pars
 assert_source_token "$PRODUCER" "grep -c 'session_name:'" "tmux session parser"
 assert_source_token "$PRODUCER" "grep -c 'window_index:'" "tmux window parser"
 assert_source_token "$PRODUCER" "grep -c 'pane_index:'" "tmux pane parser"
+assert_source_token "$PRODUCER" 'started && /^machine:/' "tmux machine parser"
+assert_source_token "$PRODUCER" 'started && /^session_windows:/' "tmux session window-count parser"
+assert_source_token "$PRODUCER" 'started && /^session_attached:/' "tmux attached-state parser"
+assert_source_token "$PRODUCER" 'started && /^notes:/' "tmux notes parser"
+assert_source_token "$PRODUCER" "grep -q 'RESULT=REFUSED'" "generic refused-result parser"
+assert_source_token "$PRODUCER" "grep -q 'RESULT=PASS'" "generic pass-result parser"
 assert_source_token "$PRODUCER" 'grep -qi "RESULT=FAIL"' "notification failure parser"
 assert_source_token "$PRODUCER" 'grep -qi "RESULT=WARN"' "notification warning parser"
 assert_source_token "$PRODUCER" "grep -i 'report_url_base:'" "notification report URL parser"
@@ -34,6 +40,9 @@ assert_source_token "$ROOT_DIR/ops/schedules/discover-schedules.sh" 'echo "unit_
 assert_source_token "$ROOT_DIR/ops/schedules/discover-schedules.sh" 'echo "risk: $risk"' "schedule risk emitter"
 assert_source_token "$ROOT_DIR/ops/schedules/discover-schedules.sh" 'echo "notes: ${notes:-none}"' "schedule record terminator"
 assert_source_token "$ROOT_DIR/ops/tmux/tmux-inventory.sh" 'echo "session_name: ${session_name:-none}"' "tmux session emitter"
+assert_source_token "$ROOT_DIR/ops/tmux/tmux-inventory.sh" 'echo "machine: $machine"' "tmux machine emitter"
+assert_source_token "$ROOT_DIR/ops/tmux/tmux-inventory.sh" 'echo "session_windows: ${session_windows:-0}"' "tmux session window-count emitter"
+assert_source_token "$ROOT_DIR/ops/tmux/tmux-inventory.sh" 'echo "session_attached: ${session_attached:-unknown}"' "tmux attached-state emitter"
 assert_source_token "$ROOT_DIR/ops/tmux/tmux-inventory.sh" 'echo "window_index: ${window_index:-none}"' "tmux window emitter"
 assert_source_token "$ROOT_DIR/ops/tmux/tmux-inventory.sh" 'echo "pane_index: ${pane_index:-none}"' "tmux pane emitter"
 assert_source_token "$ROOT_DIR/ops/tmux/tmux-inventory.sh" 'echo "pane_current_command: ${pane_command:-unknown}"' "tmux highlight command emitter"
@@ -46,6 +55,7 @@ assert_source_token "$ROOT_DIR/ops/notifications/dedupe-check.sh" '.sent marker(
 assert_source_token "$ROOT_DIR/ops/schedules/schedule-dry-run.sh" 'echo "WOULD_RUN:' "schedule dry-run summary"
 assert_source_token "$ROOT_DIR/ops/schedules/schedule-dry-run.sh" 'echo "COPY_ONLY:' "schedule safeguard summary"
 assert_source_token "$ROOT_DIR/ops/schedules/schedule-dry-run.sh" 'echo "RESULT=PASS"' "schedule dry-run result"
+assert_source_token "$ROOT_DIR/ops/schedules/schedule-dry-run.sh" 'echo "RESULT=REFUSED"' "schedule refused result"
 assert_source_token "$ROOT_DIR/ops/workspaces/workspace-plan.sh" 'echo "canonical_session_name: $CANONICAL_SESSION"' "workspace canonical-name emitter"
 assert_source_token "$ROOT_DIR/ops/workspaces/workspace-dry-run.sh" 'echo "COPY_ONLY: $(redact_text "$cmd")"' "workspace copy-only emitter"
 assert_source_token "$ROOT_DIR/ops/workspaces/workspace-dry-run.sh" 'echo "RESULT=PASS"' "workspace dry-run result"
@@ -56,7 +66,7 @@ source "$PRODUCER"
 
 notification_result="WARN"
 run_cli() {
-  case "$1" in
+  case "$*" in
     "notify status")
       printf '  report_url_base: https://harness.slimyai.xyz/reports\nRESULT=%s\n' "$notification_result"
       ;;
@@ -76,14 +86,17 @@ run_cli() {
     "schedule validate")
       printf 'RESULT=PASS warnings=0\n'
       ;;
-    "schedule plan harness-watchdog-cron")
-      printf 'schedule_id: harness-watchdog-cron\nCOPY_ONLY: --confirm\nRESULT=PASS\n'
+    "schedule plan "*)
+      printf 'schedule_id: %s\nCOPY_ONLY: --confirm\nRESULT=PASS\n' "$3"
       ;;
-    "schedule dry-run harness-watchdog-cron --action enable")
-      printf 'WOULD_RUN: future enable preview\nCOPY_ONLY: validate first\nRESULT=PASS\n'
+    "schedule dry-run "*" --action enable")
+      printf 'WOULD_RUN: future enable preview for %s\nCOPY_ONLY: validate first\nRESULT=PASS\n' "$3"
       ;;
-    "schedule run-once-dry-run harness-watchdog-cron")
-      printf 'WOULD_RUN: future run-once preview\nRESULT=PASS\n'
+    "schedule dry-run "*" --action disable")
+      printf 'WOULD_RUN: future disable preview for %s\nCOPY_ONLY: validate first\nRESULT=PASS\n' "$3"
+      ;;
+    "schedule run-once-dry-run "*)
+      printf 'WOULD_RUN: future run-once preview for %s\nRESULT=PASS\n' "$3"
       ;;
     "tmux inventory")
       printf '%s\n' \
@@ -93,17 +106,17 @@ run_cli() {
     "tmux validate")
       printf 'RESULT=PASS warnings=0\n'
       ;;
-    "workspace plan harness")
-      printf 'canonical_session_name: harness\nRESULT=PASS\n'
+    "workspace plan "*)
+      printf 'canonical_session_name: ops6-%s\nRESULT=PASS\n' "$3"
       ;;
-    "workspace dry-run harness")
-      printf 'WOULD_RUN: tmux future preview\nCOPY_ONLY: bash scripts/validate-harness.sh\nRESULT=PASS\n'
+    "workspace dry-run "*)
+      printf 'WOULD_RUN: tmux future preview for %s\nCOPY_ONLY: bash scripts/validate-harness.sh\nRESULT=PASS\n' "$3"
       ;;
     "workspace validate")
       printf 'RESULT=PASS warnings=0\n'
       ;;
     *)
-      fail "unexpected stubbed CLI command: $1"
+      fail "unexpected stubbed CLI command: $*"
       ;;
   esac
 }
@@ -128,7 +141,26 @@ jq -e '.summary.sessionCount == 2 and .summary.windowCount == 2 and .summary.pan
 pass "tmux session/window/pane counts, highlights, and validation result parse correctly"
 
 workspace_json="$(build_workspace_dry_run)"
-jq -e '.canonicalSessionPreview == "harness" and any(.previewLines[]; contains("WOULD_RUN:")) and any(.copyOnlyLines[]; contains("COPY_ONLY:")) and any(.notes[]; contains("Workspace validate: PASS"))' <<<"$workspace_json" >/dev/null || fail "workspace dry-run parsing changed"
+jq -e '.canonicalSessionPreview == "ops6-harness" and any(.previewLines[]; contains("WOULD_RUN:")) and any(.copyOnlyLines[]; contains("COPY_ONLY:")) and any(.notes[]; contains("Workspace validate: PASS"))' <<<"$workspace_json" >/dev/null || fail "workspace dry-run parsing changed"
 pass "workspace canonical name, preview, COPY_ONLY, and validation result parse correctly"
+
+schedule_drys_json="$(build_schedule_dry_runs)"
+schedule_registry_count="$(jq '.entries | length' "$ROOT_DIR/ops/schedules/schedule-registry.json")"
+jq -e --argjson count "$schedule_registry_count" '
+  length == $count and
+  all(.[]; has("scheduleId") and has("targetMachine") and has("risk") and has("managedMode") and
+    has("liveEnableAllowed") and has("liveDisableAllowed") and has("liveRunOnceAllowed") and
+    .planResult == "PASS" and .enableResult == "PASS" and .disableResult == "PASS" and .runOnceResult == "PASS")
+' <<<"$schedule_drys_json" >/dev/null || fail "registry-driven schedule expansion changed"
+pass "scheduleDryRuns covers the registry dynamically with structured results"
+
+workspace_drys_json="$(build_workspace_dry_runs)"
+workspace_registry_count="$(jq '.workspaces | length' "$ROOT_DIR/ops/workspaces/workspace-registry.json")"
+jq -e --argjson count "$workspace_registry_count" '
+  length == $count and all(.[]; has("workspaceId") and has("targetMachine") and
+    has("canonicalSessionPreview") and .planResult == "PASS" and
+    any(.previewLines[]; contains("WOULD_RUN:")) and any(.copyOnlyLines[]; contains("COPY_ONLY:")))
+' <<<"$workspace_drys_json" >/dev/null || fail "registry-driven workspace expansion changed"
+pass "workspaceDryRuns covers the registry dynamically with structured results"
 
 echo "snapshot producer human-readable contract PASS"

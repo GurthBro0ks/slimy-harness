@@ -4,9 +4,11 @@ set -euo pipefail
 PRODUCER_VERSION="1.0.0"
 SCHEMA_VERSION=1
 MAX_AGE_SECONDS=900
+RUN_CLI_TIMEOUT_SECONDS="${RUN_CLI_TIMEOUT_SECONDS:-20}"
+MAX_SNAPSHOT_BYTES="${MAX_SNAPSHOT_BYTES:-524288}"
 
-HARNESS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SNAPSHOT_DIR="/home/slimy/harness-logs/ops-snapshots"
+HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SNAPSHOT_DIR="${SNAPSHOT_OUTPUT_DIR:-/home/slimy/harness-logs/ops-snapshots}"
 LATEST_JSON="${SNAPSHOT_DIR}/latest.json"
 HISTORY_DIR="${SNAPSHOT_DIR}/history"
 TEMP_JSON="${SNAPSHOT_DIR}/.latest.json.tmp"
@@ -14,7 +16,9 @@ GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 STALE_AFTER=""
 HOSTNAME="$(hostname)"
 
-CLI_CMD="bash ${HARNESS_ROOT}/ops/harness-ops"
+HARNESS_OPS_BIN="${SNAPSHOT_HARNESS_OPS_BIN:-${HARNESS_ROOT}/ops/harness-ops}"
+SCHEDULE_REGISTRY="${SNAPSHOT_SCHEDULE_REGISTRY:-${HARNESS_ROOT}/ops/schedules/schedule-registry.json}"
+WORKSPACE_REGISTRY="${SNAPSHOT_WORKSPACE_REGISTRY:-${HARNESS_ROOT}/ops/workspaces/workspace-registry.json}"
 
 ALLOWED_COMMANDS=(
   "notify status"
@@ -51,9 +55,9 @@ redact_text() {
 }
 
 is_allowed() {
-  local cmd="$1"
+  local command_key="${1:-} ${2:-}"
   for allowed in "${ALLOWED_COMMANDS[@]}"; do
-    if [[ "$cmd" == "$allowed"* ]]; then
+    if [[ "$command_key" == "$allowed" ]]; then
       return 0
     fi
   done
@@ -61,21 +65,47 @@ is_allowed() {
 }
 
 run_cli() {
-  local cmd="$1"
+  local command_label="$*"
   local output=""
   local rc=0
 
-  if ! is_allowed "$cmd"; then
-    warn "Command not on allowlist, skipping: $cmd"
+  if ! is_allowed "$@"; then
+    warn "Command not on allowlist, skipping: $command_label"
     printf ''
     return 1
   fi
 
-  output="$(cd "$HARNESS_ROOT" && $CLI_CMD $cmd 2>&1)" || rc=$?
-  if [[ $rc -ne 0 ]]; then
-    warn "Command exited with rc=$rc: $cmd"
+  output="$(cd "$HARNESS_ROOT" && timeout --foreground "$RUN_CLI_TIMEOUT_SECONDS" bash "$HARNESS_OPS_BIN" "$@" 2>&1)" || rc=$?
+  if [[ $rc -eq 124 || $rc -eq 137 ]]; then
+    warn "CLI timed out after ${RUN_CLI_TIMEOUT_SECONDS}s: $command_label"
+    output="${output}${output:+$'\n'}producer_note: CLI timed out after ${RUN_CLI_TIMEOUT_SECONDS}s
+RESULT=WARN"
+  elif [[ $rc -ne 0 ]]; then
+    warn "Command exited with rc=$rc: $command_label"
   fi
   redact_text "$output"
+}
+
+validate_configuration() {
+  local path
+  for path in "$SNAPSHOT_DIR" "$HARNESS_OPS_BIN" "$SCHEDULE_REGISTRY" "$WORKSPACE_REGISTRY"; do
+    if [[ "$path" != /* ]]; then
+      err "Configured paths must be absolute"
+      return 1
+    fi
+  done
+  if [[ ! "$RUN_CLI_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+    err "RUN_CLI_TIMEOUT_SECONDS must be a positive integer"
+    return 1
+  fi
+  if [[ ! "$MAX_SNAPSHOT_BYTES" =~ ^[1-9][0-9]*$ ]]; then
+    err "MAX_SNAPSHOT_BYTES must be a positive integer"
+    return 1
+  fi
+  if [[ ! -f "$HARNESS_OPS_BIN" || ! -f "$SCHEDULE_REGISTRY" || ! -f "$WORKSPACE_REGISTRY" ]]; then
+    err "Configured producer input file is missing"
+    return 1
+  fi
 }
 
 compute_stale_after() {
@@ -94,12 +124,37 @@ extract_field() {
   printf '%s' "$text" | grep "^${field}:" | head -1 | sed "s/^${field}:[[:space:]]*//"
 }
 
+result_from_output() {
+  local text="$1"
+  if printf '%s' "$text" | grep -q 'RESULT=REFUSED'; then
+    printf 'REFUSED'
+  elif printf '%s' "$text" | grep -q 'RESULT=FAIL'; then
+    printf 'FAIL'
+  elif printf '%s' "$text" | grep -q 'RESULT=WARN'; then
+    printf 'WARN'
+  elif printf '%s' "$text" | grep -q 'RESULT=PASS'; then
+    printf 'PASS'
+  else
+    printf 'UNKNOWN'
+  fi
+}
+
+workspace_registry_entries() {
+  jq -c '
+    .workspaces[]? |
+    select(type == "object") |
+    select(.workspace_id | type == "string") |
+    select(.target_machine | type == "string") |
+    select(.canonical_session_name | type == "string")
+  ' "$WORKSPACE_REGISTRY" 2>/dev/null
+}
+
 build_notification_status() {
   log "Gathering notification status..."
   local status_output dryrun_output dedupe_output
-  status_output="$(run_cli "notify status")" || true
-  dryrun_output="$(run_cli "notify dry-run")" || true
-  dedupe_output="$(run_cli "notify dedupe-check snapshot-producer-placeholder")" || true
+  status_output="$(run_cli notify status)" || true
+  dryrun_output="$(run_cli notify dry-run)" || true
+  dedupe_output="$(run_cli notify dedupe-check snapshot-producer-placeholder)" || true
 
   local notify_status="ok"
   local delivery_mode="disabled"
@@ -177,8 +232,8 @@ build_schedule_highlights() {
 build_schedule_inventory() {
   log "Gathering schedule inventory..."
   local inv_output val_output
-  inv_output="$(run_cli "schedule inventory")" || true
-  val_output="$(run_cli "schedule validate")" || true
+  inv_output="$(run_cli schedule inventory)" || true
+  val_output="$(run_cli schedule validate)" || true
 
   local user_cron=0 sys_timer=0 read_only=0
   user_cron="$(printf '%s' "$inv_output" | grep -c 'schedule_type: user_crontab' || true)"
@@ -216,9 +271,9 @@ build_schedule_inventory() {
 build_schedule_dry_run() {
   log "Gathering schedule dry-run previews..."
   local plan_output enable_output runonce_output
-  plan_output="$(run_cli "schedule plan harness-watchdog-cron")" || true
-  enable_output="$(run_cli "schedule dry-run harness-watchdog-cron --action enable")" || true
-  runonce_output="$(run_cli "schedule run-once-dry-run harness-watchdog-cron")" || true
+  plan_output="$(run_cli schedule plan harness-watchdog-cron)" || true
+  enable_output="$(run_cli schedule dry-run harness-watchdog-cron --action enable)" || true
+  runonce_output="$(run_cli schedule run-once-dry-run harness-watchdog-cron)" || true
 
   local plan_lines enable_lines runonce_lines
   plan_lines="$(text_to_json_lines "$plan_output")"
@@ -238,6 +293,120 @@ build_schedule_dry_run() {
       disablePreview: $disablePreview,
       runOncePreview: $runOncePreview
     }'
+}
+
+build_schedule_dry_runs() {
+  log "Gathering registry-driven schedule dry-run previews..."
+  local rows_tmp
+  rows_tmp="$(mktemp)"
+  : > "$rows_tmp"
+
+  if ! jq -e '.entries | type == "array"' "$SCHEDULE_REGISTRY" >/dev/null 2>&1; then
+    warn "Schedule registry is malformed; scheduleDryRuns will be empty"
+    printf '[]'
+    rm -f "$rows_tmp"
+    return 0
+  fi
+
+  local index=0 entry schedule_id target_machine risk managed_mode
+  local live_enable live_disable live_run_once registry_notes
+  local plan_output enable_output disable_output runonce_output
+  local plan_lines enable_lines disable_lines runonce_lines
+  local plan_result enable_result disable_result runonce_result
+  declare -A seen_ids=()
+
+  while IFS= read -r entry; do
+    if ! jq -e '
+      type == "object" and
+      (.schedule_id | type == "string") and
+      (.target_machine | type == "string") and
+      (.risk_level | type == "string") and
+      (.managed_mode | type == "string") and
+      (.live_enable_allowed | type == "boolean") and
+      (.live_disable_allowed | type == "boolean") and
+      (.live_run_once_allowed | type == "boolean")
+    ' <<<"$entry" >/dev/null 2>&1; then
+      warn "Skipping malformed schedule registry entry at index $index"
+      index=$((index + 1))
+      continue
+    fi
+
+    schedule_id="$(jq -r '.schedule_id' <<<"$entry")"
+    if [[ ! "$schedule_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+      warn "Skipping schedule registry entry with invalid ID at index $index"
+      index=$((index + 1))
+      continue
+    fi
+    if [[ -n "${seen_ids[$schedule_id]:-}" ]]; then
+      warn "Skipping duplicate schedule registry ID at index $index"
+      index=$((index + 1))
+      continue
+    fi
+    seen_ids["$schedule_id"]=1
+
+    target_machine="$(jq -r '.target_machine' <<<"$entry")"
+    risk="$(jq -r '.risk_level' <<<"$entry")"
+    managed_mode="$(jq -r '.managed_mode' <<<"$entry")"
+    live_enable="$(jq -r '.live_enable_allowed' <<<"$entry")"
+    live_disable="$(jq -r '.live_disable_allowed' <<<"$entry")"
+    live_run_once="$(jq -r '.live_run_once_allowed' <<<"$entry")"
+    registry_notes="$(jq -r '.notes // "No registry notes."' <<<"$entry")"
+    registry_notes="$(redact_text "$registry_notes")"
+
+    plan_output="$(run_cli schedule plan "$schedule_id")" || true
+    enable_output="$(run_cli schedule dry-run "$schedule_id" --action enable)" || true
+    disable_output="$(run_cli schedule dry-run "$schedule_id" --action disable)" || true
+    runonce_output="$(run_cli schedule run-once-dry-run "$schedule_id")" || true
+
+    plan_lines="$(text_to_json_lines "$plan_output")"
+    enable_lines="$(text_to_json_lines "$enable_output")"
+    disable_lines="$(text_to_json_lines "$disable_output")"
+    runonce_lines="$(text_to_json_lines "$runonce_output")"
+    plan_result="$(result_from_output "$plan_output")"
+    enable_result="$(result_from_output "$enable_output")"
+    disable_result="$(result_from_output "$disable_output")"
+    runonce_result="$(result_from_output "$runonce_output")"
+
+    jq -n \
+      --arg scheduleId "$schedule_id" \
+      --arg targetMachine "$target_machine" \
+      --arg risk "$risk" \
+      --arg managedMode "$managed_mode" \
+      --argjson liveEnableAllowed "$live_enable" \
+      --argjson liveDisableAllowed "$live_disable" \
+      --argjson liveRunOnceAllowed "$live_run_once" \
+      --arg planResult "$plan_result" \
+      --argjson planLines "$plan_lines" \
+      --arg enableResult "$enable_result" \
+      --argjson enablePreview "$enable_lines" \
+      --arg disableResult "$disable_result" \
+      --argjson disablePreview "$disable_lines" \
+      --arg runOnceResult "$runonce_result" \
+      --argjson runOncePreview "$runonce_lines" \
+      --arg notes "$registry_notes" \
+      '{
+        scheduleId: $scheduleId,
+        targetMachine: $targetMachine,
+        risk: $risk,
+        managedMode: $managedMode,
+        liveEnableAllowed: $liveEnableAllowed,
+        liveDisableAllowed: $liveDisableAllowed,
+        liveRunOnceAllowed: $liveRunOnceAllowed,
+        planResult: $planResult,
+        planLines: $planLines,
+        enableResult: $enableResult,
+        enablePreview: $enablePreview,
+        disableResult: $disableResult,
+        disablePreview: $disablePreview,
+        runOnceResult: $runOnceResult,
+        runOncePreview: $runOncePreview,
+        notes: [$notes]
+      }' >> "$rows_tmp"
+    index=$((index + 1))
+  done < <(jq -c '.entries[]' "$SCHEDULE_REGISTRY")
+
+  jq -s '.' "$rows_tmp"
+  rm -f "$rows_tmp"
 }
 
 build_tmux_highlights() {
@@ -277,8 +446,8 @@ build_tmux_highlights() {
 build_tmux_inventory() {
   log "Gathering tmux inventory..."
   local inv_output val_output
-  inv_output="$(run_cli "tmux inventory")" || true
-  val_output="$(run_cli "tmux validate")" || true
+  inv_output="$(run_cli tmux inventory)" || true
+  val_output="$(run_cli tmux validate)" || true
 
   local sessions=0 windows=0 panes=0
   sessions="$(printf '%s' "$inv_output" | grep -c 'session_name:' || true)"
@@ -311,12 +480,93 @@ build_tmux_inventory() {
     }'
 }
 
+build_tmux_sessions() {
+  log "Gathering structured tmux sessions..."
+  local inv_output records_tmp records_json mappings_json
+  inv_output="$(run_cli tmux inventory)" || true
+  records_tmp="$(mktemp)"
+  : > "$records_tmp"
+
+  while IFS=$'\t' read -r machine session_name attached window_count pane_index record_notes; do
+    [[ -z "$session_name" ]] && continue
+    case "$session_name" in
+      none|"(none)"|local_tmux|remote_nuc2) continue ;;
+    esac
+    jq -n \
+      --arg machine "$machine" \
+      --arg sessionName "$session_name" \
+      --arg attached "$attached" \
+      --arg windowCount "$window_count" \
+      --arg paneIndex "$pane_index" \
+      --arg notes "$record_notes" \
+      '{machine: $machine, sessionName: $sessionName, attachedRaw: $attached, windowCountRaw: $windowCount, paneIndex: $paneIndex, notes: $notes}' \
+      >> "$records_tmp"
+  done < <(
+    printf '%s' "$inv_output" | awk '
+      function emit() {
+        if (started && session_name != "") {
+          printf "%s\t%s\t%s\t%s\t%s\t%s\n", machine, session_name, attached, windows, pane_index, notes
+        }
+      }
+      /^---$/ { emit(); started=1; machine=""; session_name=""; attached=""; windows="0"; pane_index="none"; notes=""; next }
+      started && /^machine:/ { machine=$0; sub(/^machine:[[:space:]]*/, "", machine); next }
+      started && /^session_name:/ { session_name=$0; sub(/^session_name:[[:space:]]*/, "", session_name); next }
+      started && /^session_attached:/ { attached=$0; sub(/^session_attached:[[:space:]]*/, "", attached); next }
+      started && /^session_windows:/ { windows=$0; sub(/^session_windows:[[:space:]]*/, "", windows); next }
+      started && /^pane_index:/ { pane_index=$0; sub(/^pane_index:[[:space:]]*/, "", pane_index); next }
+      started && /^notes:/ { notes=$0; sub(/^notes:[[:space:]]*/, "", notes); next }
+      END { emit() }
+    '
+  )
+
+  records_json="$(jq -s '.' "$records_tmp")"
+  rm -f "$records_tmp"
+
+  mappings_json="$(workspace_registry_entries | jq -s '
+    map(select(.workspace_id | test("^[A-Za-z0-9][A-Za-z0-9._-]*$"))) |
+    unique_by(.workspace_id) |
+    map({workspaceId: .workspace_id, targetMachine: .target_machine, sessionName: .canonical_session_name})
+  ' 2>/dev/null || echo '[]')"
+  [[ -n "$mappings_json" ]] || mappings_json='[]'
+
+  jq -n \
+    --argjson records "$records_json" \
+    --argjson mappings "$mappings_json" '
+      def machine_key:
+        ascii_downcase |
+        if contains("nuc1") then "nuc1"
+        elif contains("nuc2") then "nuc2"
+        else . end;
+      reduce $records[] as $record ([];
+        ($mappings | map(select(
+          .sessionName == $record.sessionName and
+          ((.targetMachine | machine_key) == ($record.machine | machine_key))
+        )) | first // null) as $association |
+        (map(.machine == $record.machine and .sessionName == $record.sessionName) | index(true)) as $index |
+        if $index == null then
+          . + [{
+            machine: $record.machine,
+            sessionName: $record.sessionName,
+            attached: (if $record.attachedRaw == "attached" then true elif $record.attachedRaw == "detached" then false else null end),
+            windowCount: ($record.windowCountRaw | tonumber? // 0),
+            paneCount: (if ($record.paneIndex == "none" or $record.paneIndex == "n/a") then 0 else 1 end),
+            canonical: ($association != null),
+            workspaceId: ($association.workspaceId // null),
+            notes: (["Metadata only. No pane content or scrollback captured.", $record.notes] | map(select(length > 0)) | unique)
+          }]
+        else
+          .[$index].paneCount += (if ($record.paneIndex == "none" or $record.paneIndex == "n/a") then 0 else 1 end) |
+          .[$index].notes = ((.[$index].notes + [$record.notes]) | map(select(length > 0)) | unique)
+        end
+      )'
+}
+
 build_workspace_dry_run() {
   log "Gathering workspace dry-run previews..."
   local plan_output dryrun_output val_output
-  plan_output="$(run_cli "workspace plan harness")" || true
-  dryrun_output="$(run_cli "workspace dry-run harness")" || true
-  val_output="$(run_cli "workspace validate")" || true
+  plan_output="$(run_cli workspace plan harness)" || true
+  dryrun_output="$(run_cli workspace dry-run harness)" || true
+  val_output="$(run_cli workspace validate)" || true
 
   local canonical="harness"
   local canonical_line
@@ -345,6 +595,87 @@ build_workspace_dry_run() {
       copyOnlyLines: $copyOnlyLines,
       notes: ["Snapshot preview only.", ("Workspace validate: " + $valResult)]
     }'
+}
+
+build_workspace_dry_runs() {
+  log "Gathering registry-driven workspace dry-run previews..."
+  local rows_tmp
+  rows_tmp="$(mktemp)"
+  : > "$rows_tmp"
+
+  if ! jq -e '.workspaces | type == "array"' "$WORKSPACE_REGISTRY" >/dev/null 2>&1; then
+    warn "Workspace registry is malformed; workspaceDryRuns will be empty"
+    printf '[]'
+    rm -f "$rows_tmp"
+    return 0
+  fi
+
+  local index=0 entry workspace_id target_machine canonical registry_notes
+  local plan_output dryrun_output plan_result preview_lines copy_only_lines
+  declare -A seen_ids=()
+
+  while IFS= read -r entry; do
+    if ! jq -e '
+      type == "object" and
+      (.workspace_id | type == "string") and
+      (.target_machine | type == "string") and
+      (.canonical_session_name | type == "string")
+    ' <<<"$entry" >/dev/null 2>&1; then
+      warn "Skipping malformed workspace registry entry at index $index"
+      index=$((index + 1))
+      continue
+    fi
+
+    workspace_id="$(jq -r '.workspace_id' <<<"$entry")"
+    if [[ ! "$workspace_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+      warn "Skipping workspace registry entry with invalid ID at index $index"
+      index=$((index + 1))
+      continue
+    fi
+    if [[ -n "${seen_ids[$workspace_id]:-}" ]]; then
+      warn "Skipping duplicate workspace registry ID at index $index"
+      index=$((index + 1))
+      continue
+    fi
+    seen_ids["$workspace_id"]=1
+
+    target_machine="$(jq -r '.target_machine' <<<"$entry")"
+    canonical="$(jq -r '.canonical_session_name' <<<"$entry")"
+    registry_notes="$(jq -r '.notes // "No registry notes."' <<<"$entry")"
+    registry_notes="$(redact_text "$registry_notes")"
+
+    plan_output="$(run_cli workspace plan "$workspace_id")" || true
+    dryrun_output="$(run_cli workspace dry-run "$workspace_id")" || true
+    plan_result="$(result_from_output "$plan_output")"
+    canonical="$(extract_field "$plan_output" "canonical_session_name" || true)"
+    if [[ -z "$canonical" ]]; then
+      canonical="$(jq -r '.canonical_session_name' <<<"$entry")"
+    fi
+    preview_lines="$(text_to_json_lines "$dryrun_output")"
+    copy_only_lines="$(printf '%s' "$dryrun_output" | grep 'COPY_ONLY:' | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || echo '[]')"
+
+    jq -n \
+      --arg workspaceId "$workspace_id" \
+      --arg targetMachine "$target_machine" \
+      --arg canonicalSessionPreview "$canonical" \
+      --arg planResult "$plan_result" \
+      --argjson previewLines "$preview_lines" \
+      --argjson copyOnlyLines "$copy_only_lines" \
+      --arg notes "$registry_notes" \
+      '{
+        workspaceId: $workspaceId,
+        targetMachine: $targetMachine,
+        canonicalSessionPreview: $canonicalSessionPreview,
+        planResult: $planResult,
+        previewLines: $previewLines,
+        copyOnlyLines: $copyOnlyLines,
+        notes: [$notes]
+      }' >> "$rows_tmp"
+    index=$((index + 1))
+  done < <(jq -c '.workspaces[]' "$WORKSPACE_REGISTRY")
+
+  jq -s '.' "$rows_tmp"
+  rm -f "$rows_tmp"
 }
 
 build_harness_reports() {
@@ -391,8 +722,8 @@ assemble_snapshot() {
     machine="nuc2"
   fi
 
-  local source_json notification_json schedule_inv_json schedule_dry_json
-  local tmux_json workspace_json reports_json
+  local source_json notification_json schedule_inv_json schedule_dry_json schedule_drys_json
+  local tmux_json tmux_sessions_json workspace_json workspace_drys_json reports_json
 
   source_json="$(jq -n \
     --arg producer "manual" \
@@ -404,8 +735,11 @@ assemble_snapshot() {
   notification_json="$(build_notification_status)"
   schedule_inv_json="$(build_schedule_inventory)"
   schedule_dry_json="$(build_schedule_dry_run)"
+  schedule_drys_json="$(build_schedule_dry_runs)"
   tmux_json="$(build_tmux_inventory)"
+  tmux_sessions_json="$(build_tmux_sessions)"
   workspace_json="$(build_workspace_dry_run)"
+  workspace_drys_json="$(build_workspace_dry_runs)"
   reports_json="$(build_harness_reports)"
 
   local freshness_json redaction_json safety_json
@@ -446,8 +780,11 @@ assemble_snapshot() {
     --argjson notificationStatus "$notification_json" \
     --argjson scheduleInventory "$schedule_inv_json" \
     --argjson scheduleDryRun "$schedule_dry_json" \
+    --argjson scheduleDryRuns "$schedule_drys_json" \
     --argjson tmuxInventory "$tmux_json" \
+    --argjson tmuxSessions "$tmux_sessions_json" \
     --argjson workspaceDryRun "$workspace_json" \
+    --argjson workspaceDryRuns "$workspace_drys_json" \
     --argjson harnessReports "$reports_json" \
     '{
       schemaVersion: $schemaVersion,
@@ -460,13 +797,17 @@ assemble_snapshot() {
       notificationStatus: $notificationStatus,
       scheduleInventory: $scheduleInventory,
       scheduleDryRun: $scheduleDryRun,
+      scheduleDryRuns: $scheduleDryRuns,
       tmuxInventory: $tmuxInventory,
+      tmuxSessions: $tmuxSessions,
       workspaceDryRun: $workspaceDryRun,
+      workspaceDryRuns: $workspaceDryRuns,
       harnessReports: $harnessReports
     }'
 }
 
 main() {
+  validate_configuration || exit 1
   log "Starting snapshot producer v${PRODUCER_VERSION}..."
   log "Harness root: ${HARNESS_ROOT}"
   log "Output: ${LATEST_JSON}"
@@ -480,6 +821,15 @@ main() {
     exit 1
   }
 
+  local snapshot_bytes
+  snapshot_bytes="$(printf '%s\n' "$snapshot_json" | wc -c)"
+  if [[ "$snapshot_bytes" -gt "$MAX_SNAPSHOT_BYTES" ]]; then
+    err "Snapshot size ${snapshot_bytes} bytes exceeds configured maximum ${MAX_SNAPSHOT_BYTES} bytes"
+    err "Latest.json will NOT be updated. Previous snapshot preserved."
+    rm -f "$TEMP_JSON"
+    exit 1
+  fi
+
   printf '%s\n' "$snapshot_json" > "$TEMP_JSON" || {
     err "Failed to write temp file: $TEMP_JSON"
     exit 1
@@ -487,7 +837,7 @@ main() {
 
   log "Validating JSON with jq..."
   local jq_result
-  jq_result="$(jq '.schemaVersion == 1 and .mode == "snapshot" and .source and .freshness and .redaction and .safety and .notificationStatus and .scheduleInventory and .scheduleDryRun and .tmuxInventory and .workspaceDryRun and .harnessReports' "$TEMP_JSON" 2>&1)" || {
+  jq_result="$(jq '.schemaVersion == 1 and .mode == "snapshot" and .source and .freshness and .redaction and .safety and .notificationStatus and .scheduleInventory and .scheduleDryRun and (.scheduleDryRuns | type == "array") and .tmuxInventory and (.tmuxSessions | type == "array") and .workspaceDryRun and (.workspaceDryRuns | type == "array") and .harnessReports' "$TEMP_JSON" 2>&1)" || {
     err "jq validation failed"
     rm -f "$TEMP_JSON"
     exit 1
